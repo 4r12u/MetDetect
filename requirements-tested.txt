@@ -1,0 +1,8 @@
+# Tested on Python 3.10.21 / Windows; tool dependencies only, never sample dependencies.
+scikit-learn==1.7.2
+numpy==2.2.6
+scipy==1.15.3
+joblib==1.6.0
+packaging==26.3
+xgboost==3.2.0
+pytest==8.4.2

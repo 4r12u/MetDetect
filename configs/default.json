@@ -1,0 +1,13 @@
+{
+  "seed": 42,
+  "max_features": 3000,
+  "ngram_max": 2,
+  "typo_distance": 1,
+  "lexical_experiment": false,
+  "rf_trees": 150,
+  "dt_max_depth": 12,
+  "min_samples_leaf": 2,
+  "class_weight": "balanced",
+  "jobs": 1
+}
+

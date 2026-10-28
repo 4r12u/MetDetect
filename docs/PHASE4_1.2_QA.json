@@ -1,0 +1,36 @@
+{
+  "version": "1.2.0",
+  "date_local": "2026-10-26",
+  "timezone": "Asia/Saigon",
+  "full_suite": {"passed": 88, "failed": 0, "warnings": 16, "warning_scope": "Unchanged upstream TypoGard regex escape DeprecationWarnings"},
+  "functional_scope": [
+    "Six model validation and explicit held-out test",
+    "Training does not access test matrix",
+    "Shared Phase 3 encoder is not fitted again",
+    "Train-only per-model scaling persisted in bundle",
+    "Independent experiments and refusal to overwrite an existing ID",
+    "Bounded parameter grid and invalid configuration rejection",
+    "Trial failures recorded; nonconverged configurations excluded from selection",
+    "Thresholds chosen on validation; decision scores supported during SVM scan",
+    "Model ranking supports ties and minimizes time/FP/FN",
+    "Native feature names, groups and signed linear weights",
+    "Stale data hides metrics and blocks held-out evaluation",
+    "Source ZIP excludes Dataset, environments and private outputs; verifies file checksums"
+  ],
+  "browser": {
+    "engine": "Microsoft Edge via Playwright",
+    "widths": [1440, 390],
+    "passed": true,
+    "checks": ["Six models", "Validation/test switching", "Average Precision ranking", "Top Feature group filtering", "FP/FN combined filters", "CSV download", "No horizontal page overflow", "No JavaScript errors", "No external HTTP requests"]
+  },
+  "fresh_zip_smoke": {
+    "passed": true,
+    "checks": ["Member checksums", "Import from extracted source", "CLI help", "Synthetic demo generation", "Phases 1-4", "Six successful models", "Test absent after training", "Explicit test", "Offline HTML"]
+  },
+  "limits": [
+    "All model functional checks used synthetic fixtures, not research performance estimates",
+    "The research Dataset and its labels were not modified or used for final model selection in this source upgrade",
+    "Importance is native global ranking; no SHAP, permutation importance or calibration in this release",
+    "Tuning uses the existing grouped holdout validation; there is no automatic grouped cross-validation search"
+  ]
+}

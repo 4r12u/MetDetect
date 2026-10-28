@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aic211-pypi-metadata-detector"
+version = "1.2.1"
+description = "Metadata and name-similarity features for PyPI package classification"
+requires-python = ">=3.10"
+dependencies = ["scikit-learn>=1.5,<2", "numpy>=1.24", "scipy>=1.10", "joblib>=1.3,<2", "packaging>=23"]
+
+[project.optional-dependencies]
+test = ["pytest>=8,<9"]
+ml = ["xgboost>=2.1,<4"]
+
+[project.scripts]
+pypi-metadata = "pypi_metadata_detector.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["pypi_metadata_detector*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.setuptools.package-data]
+pypi_metadata_detector = ["report.html"]

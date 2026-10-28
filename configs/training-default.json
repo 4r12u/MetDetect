@@ -1,0 +1,16 @@
+{
+  "seed": 42,
+  "jobs": 2,
+  "selection_metric": "malicious_f1",
+  "max_trials": 50,
+  "top_k": 20,
+  "thresholds": {},
+  "models": {
+    "dt": {"params": {"max_depth": 12, "min_samples_leaf": 2}},
+    "rf": {"params": {"n_estimators": 150, "min_samples_leaf": 2}},
+    "lr": {"params": {"C": 1.0, "max_iter": 3000}},
+    "svm": {"params": {"C": 1.0, "max_iter": 5000}},
+    "cnb": {"params": {"alpha": 1.0}},
+    "xgb": {"params": {"n_estimators": 150, "max_depth": 4, "learning_rate": 0.1}}
+  }
+}

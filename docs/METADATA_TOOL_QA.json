@@ -1,0 +1,78 @@
+{
+  "version": "1.0.1",
+  "date": "2026-10-24",
+  "tests": {
+    "passed": 38,
+    "failed": 0
+  },
+  "dataset_preservation": {
+    "files": 200,
+    "sha256_all_unchanged": true
+  },
+  "real_metadata_batch": {
+    "extraction_ok": 200,
+    "analysis_ok": 200,
+    "total": 200,
+    "labels_available": false
+  },
+  "official_pypi_reference": {
+    "names": 922001,
+    "targets": 28,
+    "source": "https://pypi.org/simple/",
+    "created_at": "2026-10-24T14:03:41.304468+00:00",
+    "sha256": "a31975afd0b7239a4e06578de24d64f1d6b34742799bc26b5dde2c6ad9c628dc",
+    "release_metadata_synced": 0
+  },
+  "synthetic_demo": {
+    "samples": 24,
+    "train": 12,
+    "validation": 6,
+    "test": 6,
+    "train_evaluate_scan_passed": true,
+    "metrics_are_detection_evidence": false
+  },
+  "legacy_source_removed": true,
+  "legacy_distribution_uninstalled": true,
+  "wheel": {
+    "name": "aic211_pypi_metadata_detector-1.0.1-py3-none-any.whl",
+    "sha256": "94301151298964bd9df3f743b4e373e5146a08aab5104af47f99010f938ad244",
+    "isolated_install_and_cli_passed": true
+  },
+  "runtime_versions": {
+    "scikit-learn": "1.7.2",
+    "numpy": "2.2.6",
+    "scipy": "1.15.3",
+    "joblib": "1.6.0",
+    "packaging": "26.3"
+  },
+  "sample_execution": false,
+  "sample_dependency_download": false,
+  "notes": [
+    "No real malware detection metric until labeled dataset is provided.",
+    "Default target list has 28 illustrative names; full PyPI inventory is not a benign allowlist.",
+    "Lexical experimental features disabled by default."
+  ],
+  "phase_layout": {
+    "version": "1.0.1",
+    "tests_passed": 38,
+    "phase_folders": [
+      "phase1_metadata_extraction",
+      "phase2_metadata_analysis",
+      "phase3_preprocessing",
+      "phase4_ml_classification"
+    ],
+    "dataset_sha256_unchanged": 200,
+    "legacy_bundle": {
+      "bundle_1_0_0_loaded": true,
+      "predictions_identical": true,
+      "feature_names_identical": true,
+      "samples": 24,
+      "features": 95,
+      "existing_metadata_artifacts_unchanged": true
+    },
+    "cli_scan_with_legacy_bundle_passed": true,
+    "wheel_phase_imports_and_legacy_bundle_passed": true,
+    "commands_and_feature_schema_unchanged": true,
+    "wheel_sha256": "94301151298964bd9df3f743b4e373e5146a08aab5104af47f99010f938ad244"
+  }
+}

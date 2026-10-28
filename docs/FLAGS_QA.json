@@ -1,0 +1,37 @@
+{
+  "version": "1.1.0",
+  "date": "2026-10-24",
+  "tests": {"passed": 48, "failed": 0, "command": "python -m pytest -q"},
+  "coverage": [
+    "Four flags execute independent phases and preserve manifest labels/splits",
+    "Phase 3 persists encoder and X; Phase 4 does not fit preprocessing again",
+    "Test-only tokens excluded from fitted TF-IDF vocabulary",
+    "Inference with an existing bundle never fits and does not invent labels/metrics",
+    "Missing prerequisites and labels produce actionable errors",
+    "Recursive dataset and individual artifact selection",
+    "Phase 3 checksum tampering is rejected",
+    "Rerun extraction hides stale scores and predictions",
+    "Report embeds untrusted text safely without innerHTML",
+    "Legacy subcommands and old FeatureEncoder module paths remain compatible"
+  ],
+  "real_dataset": {
+    "discovered_artifacts": 2292,
+    "benign": 1171,
+    "malicious": 1121,
+    "original_labels_and_splits_preserved": true,
+    "extraction_or_training_run_during_this_change": false
+  },
+  "functional_demo": {
+    "synthetic_samples": 24,
+    "test_samples": 6,
+    "all_four_phases_and_metric_visual_passed": true,
+    "metrics_are_not_detection_effectiveness": true
+  },
+  "html": {
+    "offline_template": true,
+    "edge_desktop_render_checked": true,
+    "edge_mobile_render_checked": true,
+    "supports_search_filter_pagination_model_split_selection": true
+  },
+  "release": "aic211-pypi-metadata-detector-1.1.0-source.zip"
+}

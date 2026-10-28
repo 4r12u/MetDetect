@@ -1,0 +1,77 @@
+{
+  "repository": "https://github.com/mt3443/typogard",
+  "commit": "9c106362605c920126736993100a213c9448961e",
+  "source_sha256": "e793599b1fc9456991f0e61b16209c60d4dfe39f28498478b6191b441a1b2d23",
+  "source_file": "typogard_npm.py",
+  "extracted": [
+    [
+      "constant",
+      29
+    ],
+    [
+      "constant",
+      30
+    ],
+    [
+      "constant",
+      33
+    ],
+    [
+      "constant",
+      36
+    ],
+    [
+      "constant",
+      39
+    ],
+    [
+      "constant",
+      44
+    ],
+    [
+      "constant",
+      89
+    ],
+    [
+      "constant",
+      90
+    ],
+    [
+      "get_most_popular_package",
+      96
+    ],
+    [
+      "same_scope",
+      120
+    ],
+    [
+      "repeated_characters",
+      141
+    ],
+    [
+      "omitted_chars",
+      184
+    ],
+    [
+      "swapped_characters",
+      233
+    ],
+    [
+      "swapped_words",
+      277
+    ],
+    [
+      "common_typos",
+      333
+    ],
+    [
+      "version_numbers",
+      381
+    ],
+    [
+      "get_typosquatting_targets",
+      408
+    ]
+  ],
+  "modifications": "Function bodies/constants copied unchanged; network/CLI entry points omitted."
+}

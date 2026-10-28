@@ -1,0 +1,32 @@
+{
+  "version": "1.2.1",
+  "date_local": "2026-10-26",
+  "timezone": "Asia/Saigon",
+  "full_suite": {"passed": 103, "failed": 0, "warnings": 16, "warning_scope": "Unchanged upstream TypoGard regex escape DeprecationWarnings"},
+  "new_cli_checks": [
+    "Folder output from each previous phase used as next phase input",
+    "extraction.json, analysis.json and preprocessing.json accepted for corresponding next phase",
+    "Wrong phase marker rejected without modifying existing artifacts",
+    "Changing --output while reading a result directory/file rejected",
+    "Single and comma-separated model selection",
+    "CLI model selection retains matching config parameters and grid",
+    "Known models absent from config use defaults",
+    "Trial budget counts only selected models",
+    "Unknown, duplicate and unsafe model names rejected",
+    "Model selection rejected for test, scan or unrelated phases",
+    "Phase 4 does not refit shared Phase 3 encoder or automatically evaluate test",
+    "Legacy dataset-path syntax remains compatible"
+  ],
+  "fresh_setup_and_zip": {
+    "passed": true,
+    "python": "3.10.21",
+    "environment": "New Windows venv, not the development environment",
+    "install_command": "python -m pip install -e .[ml]",
+    "checks": ["Source member checksums", "Import from extracted source", "Version 1.2.1 and CLI help", "Synthetic dataset generation", "Output directory chain", "JSON marker inputs", "--model dt,lr", "--model=dt", "Explicit held-out test", "Metrics and offline HTML"]
+  },
+  "limits": [
+    "All functional runs use generated synthetic metadata; results do not measure malware detection performance",
+    "Dataset archives and labels were not changed",
+    "Phase outputs accumulate within one run directory; JSON markers require neighboring samples/matrices/encoder artifacts"
+  ]
+}
