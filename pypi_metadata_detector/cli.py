@@ -6,7 +6,7 @@ import sys
 from . import __version__
 from .common import Progress, ToolError, discover, load_config, read_json, write_csv, write_json
 from .phase1_metadata_extraction.extract import extract_run
-from .phase2_metadata_analysis.reference import default_reference, load_reference, read_targets, sync_reference
+from .phase2_metadata_analysis.reference import create_top_reference, default_reference, load_reference, read_targets, sync_reference
 from .phase2_metadata_analysis.signals import analyze_run
 
 def parser():
@@ -22,6 +22,14 @@ def parser():
         sub.add_argument("--quiet", action="store_true")
         if action == "sync":
             sub.add_argument("--run", help="Also retrieve exact-version metadata for this extraction run")
+    top = actions.add_parser("top", help="Build a frozen reference from a ranked local download snapshot")
+    top.add_argument("--input", required=True, help="Local JSON snapshot with ranked project/download_count rows")
+    top.add_argument("--output", required=True, help="New directory for reference.json")
+    top.add_argument("--top", type=int, default=3000, help="Number of ranked names, 1–5000 (default 3000)")
+    top.add_argument("--targets", help="Optional supplemental CSV with name column or one name per line")
+    top.add_argument("--provenance", help="Optional source metadata JSON with sha256 matching the snapshot")
+    top.add_argument("--sync-index", action="store_true", help="Explicitly fetch the official PyPI name inventory")
+    top.add_argument("--quiet", action="store_true")
     extract = commands.add_parser("extract", help="Phase 1: read PKG-INFO/METADATA without executing samples")
     source = extract.add_mutually_exclusive_group(required=True)
     source.add_argument("--input")
@@ -69,7 +77,10 @@ def main(argv=None):
     progress = Progress(args.quiet)
     try:
         if args.command == "reference":
-            if args.action == "init":
+            if args.action == "top":
+                create_top_reference(args.input, args.output, args.top, args.targets, args.sync_index, progress,
+                                     provenance_path=args.provenance)
+            elif args.action == "init":
                 reference = default_reference(read_targets(args.targets) if args.targets else None)
                 write_json(Path(args.output) / "reference.json", reference)
                 progress.say(f"Reference offline | Targets: {len(reference['targets'])} | Registry inventory: chưa có")

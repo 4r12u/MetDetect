@@ -242,3 +242,31 @@ def test_short_full_creates_separate_runs_without_automatic_dashboard(flags_data
     assert read_json(scan / "preprocessing.json")["mode"] == "inference"
     assert (scan / "predictions.csv").is_file()
     assert not (tmp_path / "visual").exists()
+
+
+def test_full_with_top_reference_preserves_targets_for_scan(flags_dataset, tmp_path, monkeypatch):
+    source, _ = flags_dataset
+    snapshot = tmp_path / "top.json"
+    write_json(snapshot, {"last_update": "2026-10-01", "rows": [
+        {"project": "tensorflow", "download_count": 100},
+        {"project": "requests", "download_count": 90}]})
+    reference = tmp_path / "refs"
+    assert main(["reference", "top", "--input", str(snapshot), "--top", "2",
+                 "--output", str(reference), "--quiet"]) == 0
+    run = tmp_path / "top-train"
+    assert main(["-f", str(source), "-o", str(run), "-m", "dt", "--experiment", "baseline",
+                 "--references", str(reference), "--quiet"]) == 0
+    assert set(read_json(run / "analysis.json")["targets"]) == {"tensorflow", "requests"}
+    bundle = run / "experiments" / "baseline" / "bundle.joblib"
+    sample = tmp_path / "scan-input" / "PKG-INFO"
+    sample.parent.mkdir()
+    sample.write_bytes(metadata_bytes("tensrflow"))
+    def no_fit(*args, **kwargs):
+        raise AssertionError("Scan must not refit")
+    monkeypatch.setattr(FeatureEncoder, "fit", no_fit)
+    scan = tmp_path / "top-scan"
+    assert main(["-f", str(sample), "-o", str(scan), "-b", str(bundle),
+                 "--references", str(reference), "--quiet"]) == 0
+    rows = list(csv.DictReader((scan / "predictions.csv").open(encoding="utf-8-sig", newline="")))
+    assert rows[0]["nearest_target"] == "tensorflow"
+    assert rows[0]["typosquatting_candidate"] == "True"

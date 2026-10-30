@@ -1,4 +1,5 @@
 import csv
+import hashlib
 from urllib.error import HTTPError
 import pytest
 from pypi_metadata_detector.cli import main
@@ -78,3 +79,77 @@ def test_automatic_group_split_keeps_versions_together():
     for row,split in zip(records,splits):
         assert row["group"] not in by_group or by_group[row["group"]]==split
         by_group[row["group"]]=split
+
+
+def test_top_reference_frozen_with_optional_inventory(tmp_path, monkeypatch):
+    from pypi_metadata_detector.phase2_metadata_analysis import reference
+    from pypi_metadata_detector.phase2_metadata_analysis.signals import name_signals
+    snapshot = tmp_path / "downloads.json"
+    write_json(snapshot, {"last_update": "2026-10-01", "source": "fixture", "rows": [
+        {"project": "tensorflow", "download_count": 100},
+        {"project": "Requests", "download_count": 90},
+        {"project": "unused", "download_count": 80},
+    ]})
+    extra = tmp_path / "extra.txt"
+    extra.write_text("tensorflow-gpu\n", encoding="utf-8")
+    provenance = tmp_path / "provenance.json"
+    write_json(provenance, {"sha256": hashlib.sha256(snapshot.read_bytes()).hexdigest(),
+                            "url": "https://example.test/snapshot", "retrieved_at": "2026-10-02"})
+    calls = []
+    def fake_get(url, *args, **kwargs):
+        calls.append(url)
+        return {"projects": [{"name": "tensorflow"}, {"name": "not-a-target"}]}, "123"
+    monkeypatch.setattr(reference, "get_json", fake_get)
+    out = tmp_path / "reference"
+    assert main(["reference", "top", "--input", str(snapshot), "--top", "2", "--targets", str(extra),
+                 "--provenance", str(provenance), "--output", str(out), "--sync-index", "--quiet"]) == 0
+    ref = load_reference(out)
+    assert ref["targets"] == ["requests", "tensorflow", "tensorflow-gpu"]
+    assert ref["names"] == ["not-a-target", "tensorflow"] and ref["index_available"]
+    assert calls == ["https://pypi.org/simple/"]
+    assert ref["target_provenance"]["snapshot_last_update"] == "2026-10-01"
+    assert ref["target_provenance"]["snapshot_url"] == "https://example.test/snapshot"
+    assert ref["target_provenance"]["download_period"] is None
+    assert ref["target_provenance"]["top_count"] == 2
+    assert ref["target_provenance"]["supplemental_count"] == 1
+    assert name_signals("tensrflow", tuple(ref["targets"]), 1)["omitted_character"]
+    assert name_signals("ttensorflow-gpu", tuple(ref["targets"]), 1)["repeated_character"]
+    before = (out / "reference.json").read_bytes()
+    assert main(["reference", "top", "--input", str(snapshot), "--output", str(out), "--top", "2"]) == 2
+    assert (out / "reference.json").read_bytes() == before
+
+
+def test_top_reference_offline_and_invalid_snapshots(tmp_path, monkeypatch):
+    from pypi_metadata_detector.phase2_metadata_analysis import reference
+    monkeypatch.setattr(reference, "get_json", lambda *a, **kw: pytest.fail("unexpected network access"))
+    snapshot = tmp_path / "downloads.json"
+    write_json(snapshot, {"rows": [{"project": "tensorflow", "download_count": 2},
+                                   {"project": "requests", "download_count": 1}]})
+    out = tmp_path / "offline"
+    assert main(["reference", "top", "--input", str(snapshot), "--top", "2", "--output", str(out), "--quiet"]) == 0
+    assert not load_reference(out)["index_available"]
+    assert main(["reference", "top", "--input", str(snapshot), "--top", "3", "--output", str(tmp_path / "bad")]) == 2
+    write_json(snapshot, {"rows": [{"project": "ok", "download_count": 1},
+                                   {"project": "another", "download_count": 2}]})
+    assert main(["reference", "top", "--input", str(snapshot), "--top", "2", "--output", str(tmp_path / "bad")]) == 2
+    assert not (tmp_path / "bad").exists()
+    write_json(snapshot, {"rows": [{"project": "ok", "download_count": 1},
+                                   {"project": "later", "download_count": 2}]})
+    assert main(["reference", "top", "--input", str(snapshot), "--top", "1", "--output", str(tmp_path / "bad")]) == 2
+    write_json(snapshot, {"rows": [{"project": "ok", "download_count": 2}]})
+    provenance = tmp_path / "wrong-provenance.json"
+    write_json(provenance, {"sha256": "bad"})
+    assert main(["reference", "top", "--input", str(snapshot), "--top", "1", "--output", str(tmp_path / "bad"),
+                 "--provenance", str(provenance)]) == 2
+    assert not (tmp_path / "bad").exists()
+
+
+def test_top_reference_invalid_pypi_response_is_reported(tmp_path, monkeypatch, capsys):
+    from pypi_metadata_detector.phase2_metadata_analysis import reference
+    monkeypatch.setattr(reference, "get_json", lambda *a, **kw: ([], None))
+    snapshot = tmp_path / "downloads.json"
+    write_json(snapshot, {"rows": [{"project": "ok", "download_count": 1}]})
+    assert main(["reference", "top", "--input", str(snapshot), "--top", "1", "--output", str(tmp_path / "out"),
+                 "--sync-index"]) == 2
+    assert "invalid_pypi_index" in capsys.readouterr().err
+    assert not (tmp_path / "out").exists()

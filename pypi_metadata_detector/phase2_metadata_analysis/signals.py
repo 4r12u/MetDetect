@@ -74,7 +74,8 @@ def pair_signals(suspect, target):
         result["keyboard_or_visual_substitution"] = len(differences) == 1 and similar_character(*differences[0])
     a, b = suspect.split("-"), target.split("-")
     result["swapped_words"] = len(a) > 1 and len(a) == len(b) and a != b and sorted(a) == sorted(b)
-    result["version_suffix"] = re.fullmatch(re.escape(target) + r"-?\d+", suspect) is not None
+    result["version_suffix"] = (suspect.startswith(target) and
+                                re.fullmatch(r"-?\d+", suspect[len(target):]) is not None)
     return result
 
 @lru_cache(maxsize=20_000)

@@ -176,6 +176,33 @@ pypi-metadata reference sync --output .\references
 
 `--references` chọn snapshot offline. `--config` là cấu hình Phase 1/2; `--train-config` chỉ cho Phase 4. Inventory PyPI không phải danh sách benign.
 
+### Thử nghiệm top 3.000 target và inventory PyPI
+
+Chuẩn bị reference **một lần**, dùng snapshot lượt tải JSON đã có trong Dataset và lấy inventory hiện tại từ PyPI chính thức. `--output` phải là thư mục chưa tồn tại; lệnh không ghi đè reference cũ:
+
+```powershell
+pypi-metadata reference top --input .\Dataset\provenance\sources\top-pypi-packages-30-days.min.json --provenance .\Dataset\provenance\sources\reference_provenance.json --output .\outputs\reference-top3000 --sync-index
+```
+
+Snapshot đầu vào phải có `rows` gồm `project`, `download_count`, sắp xếp theo lượt tải giảm dần. Lệnh kiểm tra thứ tự toàn bộ snapshot, chọn 3.000 dòng đầu, chuẩn hóa tên và lưu hash, thời điểm có trong snapshot và số target vào `reference.json`. `--provenance` là tùy chọn; nếu dùng, file phải chứa SHA-256 khớp snapshot và có thể ghi URL, thời điểm lấy dữ liệu và kỳ thống kê khi nguồn cung cấp. Không suy kỳ thống kê từ tên file: kỳ không có bằng chứng được lưu `null`. Đây là snapshot tổng hợp sẵn, không phải lệnh tự query BigQuery. `--sync-index` chỉ truy cập PyPI để lấy inventory tên; bỏ tùy chọn này nếu muốn chuẩn bị offline, khi đó trạng thái inventory là unavailable. Có thể thay `--top 3000` bằng số từ 1 đến 5.000.
+
+Để bổ sung target theo tiêu chí và nguồn đã chốt, cung cấp `--targets .\targets-extra.txt`, mỗi dòng một tên (hoặc CSV cột `name`); tổng số tên duy nhất tối đa 5.000. Danh sách lượt tải và danh sách bổ sung chỉ phục vụ lựa chọn target, không tự gán nhãn benign/malicious. Lưu snapshot reference và nguồn target cùng kết quả thí nghiệm; không chọn target theo lỗi trên test.
+
+Chạy một run mới để so sánh với TC0:
+
+```powershell
+pypi-metadata -f .\Dataset -o .\outputs\run-top3000 -m all --experiment baseline --references .\outputs\reference-top3000
+pypi-metadata --visual .\outputs\run-top3000 --experiment baseline
+```
+
+Đây là lần train mới; test vẫn chạy riêng sau khi chốt. Dùng `-m all` để thử sáu model như baseline `testcase0`, hoặc chọn model bằng `-m` nếu cần. Scan bằng bundle mới có thể dùng cùng reference để đối chiếu inventory:
+
+```powershell
+pypi-metadata -f .\sample.whl -b .\outputs\run-top3000\experiments\baseline\bundle.joblib --references .\outputs\reference-top3000
+```
+
+Nếu bỏ `--references` khi scan, tool vẫn dùng target đã lưu trong bundle nhưng inventory có thể unavailable. Reference phải có target khớp bundle. Top 3.000 không đảm bảo bao phủ mọi target và không thêm quy tắc combosquatting. Quy tắc hiện tại trả về `exact_target` và không xét tiếp các target khác khi tên sample trùng một target; đây không phải xác minh package an toàn. Nếu target snapshot mới hơn mẫu lịch sử, ghi rõ điều đó khi diễn giải đánh giá. Tăng từ 28 lên 3.000 target có thể làm Phase 2 mất thời gian hơn; lệnh vẫn chạy offline sau bước chuẩn bị reference.
+
 ```powershell
 python -m pip install -e ".[ml,test]"
 python -B -m pytest -p no:cacheprovider -q
