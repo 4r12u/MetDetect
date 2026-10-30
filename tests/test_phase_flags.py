@@ -222,3 +222,23 @@ def test_full_rejects_existing_output_and_stops_on_extraction_error(tmp_path, mo
     assert main(["--full", str(sample), "--output", str(run), "--quiet"]) != 0
     assert (run / "extraction.json").is_file()
     assert not (run / "analysis.json").exists()
+
+
+def test_short_full_creates_separate_runs_without_automatic_dashboard(flags_dataset, tmp_path):
+    source, _ = flags_dataset
+    assert main(["-f", str(source), "-m", "dt", "--quiet"]) == 0
+    train = Path(read_json(tmp_path / "outputs" / "latest.json")["run"])
+    experiment = read_json(train / "experiments" / "latest.json")["experiment_id"]
+    bundle = train / "experiments" / experiment / "bundle.joblib"
+    assert bundle.is_file()
+    assert not (tmp_path / "visual").exists()
+
+    sample = tmp_path / "new" / "PKG-INFO"
+    sample.parent.mkdir()
+    sample.write_bytes(metadata_bytes("newexample"))
+    assert main(["-f", str(sample), "-b", str(bundle), "--quiet"]) == 0
+    scan = Path(read_json(tmp_path / "outputs" / "latest.json")["run"])
+    assert train != scan and bundle.is_file()
+    assert read_json(scan / "preprocessing.json")["mode"] == "inference"
+    assert (scan / "predictions.csv").is_file()
+    assert not (tmp_path / "visual").exists()

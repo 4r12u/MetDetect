@@ -16,10 +16,10 @@ ZIP source không kèm Dataset, môi trường Python, model hay kết quả cá
 
 ## Chạy toàn bộ cho showcase
 
-Một lệnh chạy lần lượt bốn phase, vẫn lưu đầy đủ artifact từng phase. Cần chỉ định `--output` là thư mục mới hoặc rỗng để bảo vệ kết quả cũ. Với dataset có manifest và nhãn, lệnh sau **train model mới** và đánh giá validation:
+Một lệnh chạy lần lượt bốn phase, vẫn lưu đầy đủ artifact từng phase. Nếu không chỉ định `--output`, tool tự tạo run mới trong `outputs/full-<id>` và in đường dẫn. Với dataset có manifest và nhãn, lệnh sau **train model mới** và đánh giá validation:
 
 ```powershell
-python -m pypi_metadata_detector --full .\Dataset --output .\outputs\showcase-train-01 --model dt,rf --experiment baseline --metric --visual
+python -m pypi_metadata_detector -f .\Dataset -m dt,rf
 ```
 
 Sau khi chọn model bằng validation, chạy `--test` riêng như phần bên dưới; `--full` không tự chạy test. Có thể thêm `--train-config`, `--manifest`, `--config`, hoặc `--references` giống các phase tương ứng.
@@ -27,10 +27,12 @@ Sau khi chọn model bằng validation, chạy `--test` riêng như phần bên 
 Để showcase dự đoán mà **không train lại**, dùng bundle tin cậy đã chốt (thay đường dẫn bằng đường dẫn thật):
 
 ```powershell
-python -m pypi_metadata_detector --full .\sample.whl --output .\outputs\showcase-scan-01 --bundle .\outputs\showcase-train-01\experiments\baseline\bundle.joblib --metric --visual
+python -m pypi_metadata_detector -f .\sample.whl -b .\models\demo-release\bundle.joblib
 ```
 
-Không dùng `--model`, `--train-config`, `--experiment` hoặc `--test` cùng `--full --bundle`. Trong lệnh `--full`, dùng `--metric`/`--visual` không kèm PATH. Tool dừng nếu một phase trả trạng thái lỗi; xem artifact và trạng thái trong thư mục output để kiểm tra. Sample lỗi không được tự gán nhãn. Các phase vẫn đọc package như dữ liệu, không thực thi sample.
+Sau khi cài tool trong môi trường Python, có thể thay `python -m pypi_metadata_detector` bằng `pypi-metadata`. Viết tắt: `-f` là `--full`, `-b` là `--bundle`, `-m` là `--model`, `-o` là `--output`. Nếu muốn tự đặt output, dùng `-o` với thư mục mới hoặc rỗng. Mỗi lần chạy `-f` không có `-b` tạo thí nghiệm train mới; nếu bỏ `-m`, tool dùng model trong cấu hình hoặc tất cả model mặc định.
+
+Dashboard HTML tạo riêng sau khi chạy bằng `python -m pypi_metadata_detector --visual`; lệnh này dùng run gần nhất. Không dùng `--model`, `--train-config`, `--experiment` hoặc `--test` cùng `--full --bundle`. Trong lệnh `--full`, dùng `--metric`/`--visual` không kèm PATH. Tool dừng nếu một phase trả trạng thái lỗi; xem artifact và trạng thái trong thư mục output để kiểm tra. Sample lỗi không được tự gán nhãn. Các phase vẫn đọc package như dữ liệu, không thực thi sample.
 
 ## Chạy từng phase để theo dõi
 

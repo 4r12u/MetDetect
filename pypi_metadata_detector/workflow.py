@@ -3,6 +3,7 @@ import argparse
 import csv
 from pathlib import Path
 import re
+import uuid
 
 from . import __version__
 from .common import (LABELS, Progress, ToolError, archive_path, digest, load_config,
@@ -25,17 +26,17 @@ def flag_parser():
                                            "Phase 3: nhận thư mục Phase 2 hoặc analysis.json",
                                            "Phase 4: nhận thư mục Phase 3 hoặc preprocessing.json; chọn --model")):
         phases.add_argument("--" + flag, metavar="PATH", help=help_text)
-    phases.add_argument("--full", metavar="PATH", help="Chạy liên tiếp Phase 1–4 từ dataset/sample gốc")
+    phases.add_argument("-f", "--full", metavar="PATH", help="Chạy liên tiếp Phase 1–4 từ dataset/sample gốc")
     parser.add_argument("--metric", nargs="?", const="", metavar="PATH", help="Hiện metric/kết quả; bỏ PATH để dùng lần chạy gần nhất")
     parser.add_argument("--visual", nargs="?", const="", metavar="PATH", help="Tạo HTML offline; bỏ PATH để dùng lần chạy gần nhất")
-    parser.add_argument("--output", metavar="RUN_DIR", help="Thay thư mục run mặc định trong outputs")
+    parser.add_argument("-o", "--output", metavar="RUN_DIR", help="Thay thư mục run mặc định trong outputs")
     parser.add_argument("--visual-dir", help="Thay thư mục gốc visual")
     parser.add_argument("--manifest", help="Manifest nhãn tùy chọn; mặc định tự nhận manifest.csv hoặc dataset.csv")
-    parser.add_argument("--bundle", help="Model local tin cậy dùng cho sample/dataset mới; dùng cùng model ở Phase 1–4")
+    parser.add_argument("-b", "--bundle", help="Model local tin cậy dùng cho sample/dataset mới; dùng cùng model ở Phase 1–4")
     parser.add_argument("--references", help="Snapshot PyPI offline; mặc định dùng references/reference.json nếu có")
     parser.add_argument("--config", help="Cấu hình cho Phase 1/2")
     parser.add_argument("--train-config", help="JSON model/tham số/grid riêng cho Phase 4; không đổi Phase 1–3")
-    parser.add_argument("--model", "--models", metavar="CODE[,CODE...]",
+    parser.add_argument("-m", "--model", "--models", metavar="CODE[,CODE...]",
                         help="Model Phase 4: dt, rf, lr, svm, cnb, xgb; ví dụ --model dt,lr hoặc --model all")
     parser.add_argument("--experiment", metavar="ID", help="ID thí nghiệm mới hoặc chọn thí nghiệm cho --metric/--visual/--test")
     parser.add_argument("--test", action="store_true", help="Chỉ đánh giá test của --experiment đã chốt; không train/tune")
@@ -145,15 +146,14 @@ def require_phase(run, filename, flag):
 
 def execute_full(args):
     """Run the existing phase workflow in order, stopping on an unsuccessful phase."""
-    if not args.output:
-        raise ToolError("--full cần --output là thư mục run mới hoặc rỗng.")
     if args.test:
         raise ToolError("--full không chạy test; dùng --evaluate RUN --experiment ID --test sau khi chốt model.")
     if args.bundle and (args.model or args.train_config or args.experiment):
         raise ToolError("--full --bundle không dùng --model, --train-config hoặc --experiment.")
     if args.metric not in (None, "") or args.visual not in (None, ""):
         raise ToolError("Với --full, dùng --metric/--visual không kèm PATH.")
-    run = Path(args.output).resolve()
+    run = (Path(args.output).resolve() if args.output else
+           PROJECT_ROOT / "outputs" / ("full-" + uuid.uuid4().hex))
     if run.exists() and (not run.is_dir() or any(run.iterdir())):
         raise ToolError("--full cần thư mục output mới hoặc rỗng để không ghi đè kết quả cũ.")
     if args.model or args.train_config:
