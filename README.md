@@ -14,7 +14,25 @@ python -m pip install -e ".[ml]"
 
 ZIP source không kèm Dataset, môi trường Python, model hay kết quả cá nhân. Khi chuyển sang thư mục mới, đặt Dataset đã kiểm chứng vào cạnh README này; giữ nguyên cấu trúc archive và manifest. Không cần chuyển sang thư mục source bên trong.
 
-## Chạy bốn phase
+## Chạy toàn bộ cho showcase
+
+Một lệnh chạy lần lượt bốn phase, vẫn lưu đầy đủ artifact từng phase. Cần chỉ định `--output` là thư mục mới hoặc rỗng để bảo vệ kết quả cũ. Với dataset có manifest và nhãn, lệnh sau **train model mới** và đánh giá validation:
+
+```powershell
+python -m pypi_metadata_detector --full .\Dataset --output .\outputs\showcase-train-01 --model dt,rf --experiment baseline --metric --visual
+```
+
+Sau khi chọn model bằng validation, chạy `--test` riêng như phần bên dưới; `--full` không tự chạy test. Có thể thêm `--train-config`, `--manifest`, `--config`, hoặc `--references` giống các phase tương ứng.
+
+Để showcase dự đoán mà **không train lại**, dùng bundle tin cậy đã chốt (thay đường dẫn bằng đường dẫn thật):
+
+```powershell
+python -m pypi_metadata_detector --full .\sample.whl --output .\outputs\showcase-scan-01 --bundle .\outputs\showcase-train-01\experiments\baseline\bundle.joblib --metric --visual
+```
+
+Không dùng `--model`, `--train-config`, `--experiment` hoặc `--test` cùng `--full --bundle`. Trong lệnh `--full`, dùng `--metric`/`--visual` không kèm PATH. Tool dừng nếu một phase trả trạng thái lỗi; xem artifact và trạng thái trong thư mục output để kiểm tra. Sample lỗi không được tự gán nhãn. Các phase vẫn đọc package như dữ liệu, không thực thi sample.
+
+## Chạy từng phase để theo dõi
 
 ```powershell
 python -m pypi_metadata_detector --extraction .\Dataset --output .\outputs\run-01

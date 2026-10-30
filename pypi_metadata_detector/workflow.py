@@ -25,6 +25,7 @@ def flag_parser():
                                            "Phase 3: nhận thư mục Phase 2 hoặc analysis.json",
                                            "Phase 4: nhận thư mục Phase 3 hoặc preprocessing.json; chọn --model")):
         phases.add_argument("--" + flag, metavar="PATH", help=help_text)
+    phases.add_argument("--full", metavar="PATH", help="Chạy liên tiếp Phase 1–4 từ dataset/sample gốc")
     parser.add_argument("--metric", nargs="?", const="", metavar="PATH", help="Hiện metric/kết quả; bỏ PATH để dùng lần chạy gần nhất")
     parser.add_argument("--visual", nargs="?", const="", metavar="PATH", help="Tạo HTML offline; bỏ PATH để dùng lần chạy gần nhất")
     parser.add_argument("--output", metavar="RUN_DIR", help="Thay thư mục run mặc định trong outputs")
@@ -142,11 +143,48 @@ def require_phase(run, filename, flag):
         raise ToolError(f"Thiếu {filename} trong {run}. Chạy {flag} trước, rồi truyền thư mục output của bước đó.")
 
 
+def execute_full(args):
+    """Run the existing phase workflow in order, stopping on an unsuccessful phase."""
+    if not args.output:
+        raise ToolError("--full cần --output là thư mục run mới hoặc rỗng.")
+    if args.test:
+        raise ToolError("--full không chạy test; dùng --evaluate RUN --experiment ID --test sau khi chốt model.")
+    if args.bundle and (args.model or args.train_config or args.experiment):
+        raise ToolError("--full --bundle không dùng --model, --train-config hoặc --experiment.")
+    if args.metric not in (None, "") or args.visual not in (None, ""):
+        raise ToolError("Với --full, dùng --metric/--visual không kèm PATH.")
+    run = Path(args.output).resolve()
+    if run.exists() and (not run.is_dir() or any(run.iterdir())):
+        raise ToolError("--full cần thư mục output mới hoặc rỗng để không ghi đè kết quả cũ.")
+    if args.model or args.train_config:
+        from .phase4_ml_classification.estimators import load_training_config
+        load_training_config(args.train_config, args.model)
+    for phase in PHASE_FLAGS:
+        values = vars(args).copy()
+        values["full"] = None
+        for flag in PHASE_FLAGS:
+            values[flag] = str(args.full if phase == "extraction" else run) if flag == phase else None
+        values["output"] = str(run) if phase == "extraction" else None
+        values["manifest"] = args.manifest if phase == "extraction" else None
+        values["config"] = args.config if phase in ("extraction", "analysis") else None
+        values["references"] = args.references if phase == "analysis" else None
+        for key in ("model", "train_config", "experiment", "metric", "visual"):
+            values[key] = getattr(args, key) if phase == "evaluate" else None
+        Progress(args.quiet).say(f"Chạy toàn bộ | Phase {PHASE_FLAGS.index(phase) + 1}: {phase}")
+        result = execute(argparse.Namespace(**values))
+        if result:
+            Progress(args.quiet).say(f"Dừng tại Phase {PHASE_FLAGS.index(phase) + 1}; xem trạng thái trong {run}")
+            return result
+    return 0
+
+
 def execute(args):
     from .phase1_metadata_extraction.extract import extract_run
     from .phase2_metadata_analysis.reference import load_reference
     from .phase2_metadata_analysis.signals import analyze_run
 
+    if args.full:
+        return execute_full(args)
     progress = Progress(args.quiet)
     phase = next((flag for flag in PHASE_FLAGS if getattr(args, flag)), None)
     if args.model and (phase != "evaluate" or args.test or args.bundle):

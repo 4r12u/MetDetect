@@ -177,3 +177,48 @@ def test_no_metric_path_reports_no_latest(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(workflow, "PROJECT_ROOT", tmp_path)
     assert main(["--metric"]) == 2
     assert "PATH" in capsys.readouterr().err
+
+
+def test_full_training_then_inference_without_refitting(flags_dataset, tmp_path, monkeypatch):
+    source, _ = flags_dataset
+    run = tmp_path / "full-train"
+    assert main(["--full", str(source), "--output", str(run), "--model", "dt",
+                 "--experiment", "showcase", "--metric", "--visual", "--quiet"]) == 0
+    folder = run / "experiments" / "showcase"
+    assert (folder / "bundle.joblib").is_file()
+    assert (folder / "validation_metrics.json").is_file()
+    assert not (folder / "test_metrics.json").exists()
+    assert (tmp_path / "visual" / run.name / "showcase" / "index.html").is_file()
+
+    def no_fit(*args, **kwargs):
+        raise AssertionError("Full inference must not train or refit preprocessing")
+
+    monkeypatch.setattr(FeatureEncoder, "fit", no_fit)
+    from pypi_metadata_detector.phase4_ml_classification import experiments
+    monkeypatch.setattr(experiments, "make_estimator", no_fit)
+    sample = tmp_path / "new" / "PKG-INFO"
+    sample.parent.mkdir()
+    sample.write_bytes(metadata_bytes("newexample"))
+    scan = tmp_path / "full-scan"
+    assert main(["--full", str(sample), "--output", str(scan), "--bundle",
+                 str(folder / "bundle.joblib"), "--metric", "--visual", "--quiet"]) == 0
+    report = build_report(scan)
+    assert report["preprocessing"]["mode"] == "inference"
+    assert report["rows"][0]["predicted_label"] in {"benign", "malicious"}
+    assert (tmp_path / "visual" / scan.name / "index.html").is_file()
+
+
+def test_full_rejects_existing_output_and_stops_on_extraction_error(tmp_path, monkeypatch):
+    monkeypatch.setattr(workflow, "PROJECT_ROOT", tmp_path)
+    sample = tmp_path / "PKG-INFO"
+    sample.write_text("Metadata-Version: 2.1\nVersion: 1.0\n", encoding="utf-8")
+    existing = tmp_path / "existing"
+    existing.mkdir()
+    marker = existing / "keep.txt"
+    marker.write_text("keep", encoding="utf-8")
+    assert main(["--full", str(sample), "--output", str(existing), "--quiet"]) == 2
+    assert marker.read_text(encoding="utf-8") == "keep"
+    run = tmp_path / "failed"
+    assert main(["--full", str(sample), "--output", str(run), "--quiet"]) != 0
+    assert (run / "extraction.json").is_file()
+    assert not (run / "analysis.json").exists()
