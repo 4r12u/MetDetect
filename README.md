@@ -21,6 +21,8 @@ Các lệnh dưới đây dùng `pypi-metadata` sau khi cài tool và kích ho�
 
 ## Chạy toàn bộ cho showcase
 
+Trước lần chạy đầu tiên, lấy snapshot tên chính thức bằng `pypi-metadata reference sync --output .\references`. Snapshot được dùng offline cho các lần chạy tiếp theo; muốn cập nhật thì chọn thư mục mới và dùng `--references`.
+
 Một lệnh chạy lần lượt bốn phase, vẫn lưu đầy đủ artifact từng phase. Nếu không chỉ định `--output`, tool tự tạo run mới trong `outputs/full-<id>` và in đường dẫn. Với dataset có manifest và nhãn, lệnh sau **train model mới** và đánh giá validation:
 
 ```powershell
@@ -66,22 +68,43 @@ python -m pypi_metadata_detector --evaluate .\outputs\run-01 --model lr --experi
 python -m pypi_metadata_detector --evaluate .\outputs\run-01 --model dt,rf,lr --experiment compare-01
 ```
 
-| Viết tắt | Model |
-|---|---|
-| dt | Decision Tree |
-| rf | Random Forest |
-| lr | Logistic Regression |
-| svm | Linear SVM |
-| cnb | Complement Naive Bayes |
-| xgb | XGBoost |
-| all | Cả sáu model |
+| Viết tắt | Model                  |
+| ---------- | ---------------------- |
+| dt         | Decision Tree          |
+| rf         | Random Forest          |
+| lr         | Logistic Regression    |
+| svm        | Linear SVM             |
+| cnb        | Complement Naive Bayes |
+| xgb        | XGBoost                |
+| all        | Cả sáu model         |
 
 Dùng `--model dt` hoặc `--model=dt`; không gõ `model = dt` thành các từ rời. Nhiều model phân tách bằng dấu phẩy, không có khoảng trắng (hoặc đặt cả chuỗi trong dấu nháy). `--models` là tên tương đương. Bỏ --model thì dùng danh sách model trong --train-config; không có file thì mặc định cả sáu. Nếu kết hợp --model và --train-config, CLI chọn model, file giữ params/grid tương ứng; model chưa khai báo trong file dùng mặc định. --model không dùng cùng --test/--bundle vì model/ngưỡng đã được chốt trong thí nghiệm.
 
 ## Tuning và chốt model
 
+### Tự động tìm tham số XGBoost với Optuna
+
+Cài phần phụ thuộc cho chính tool (không cài hoặc chạy package mẫu):
+
 ```powershell
-pypi-metadata --evaluate .\outputs\run-01 --train-config .\configs\training-tuning.json --experiment tuning-01
+python -m pip install -e ".[optuna]"
+```
+
+Sau khi Phase 3 đã hoàn tất, ví dụ run hiện tại `outputs\TC0\1`:
+
+```powershell
+python -m pypi_metadata_detector --evaluate .\outputs\TC0\1 --train-config .\configs\best.json --optuna .\configs\optuna-xgb.json --experiment optuna-01
+python -m pypi_metadata_detector --visual .\outputs\TC0\1 --experiment optuna-01
+```
+
+`--train-config` cung cấp tham số XGBoost cố định và giá trị mốc; có thể dùng file XGBoost khác. `--optuna` chỉ định số lượt, seed của TPE và khoảng các tham số cần tìm. File mẫu chạy 20 trial, tối ưu F1 malicious trên validation. Nếu mọi giá trị mốc của tham số đang tìm đều được khai báo và nằm trong khoảng, trial đầu sẽ thử mốc đó; nếu không, Optuna bắt đầu đề xuất mà không tự thêm mốc. Trial đầu được tính trong tổng số trial. Mỗi experiment lưu cấu hình, trial thành công/lỗi, metric validation và bundle của model tốt nhất. Dashboard dùng `--visual` riêng.
+
+Chỉnh `configs/optuna-xgb.json` hoặc tạo file khác để thay `n_trials` (1–100), `sampler_seed` và `space`; mỗi tham số có `type` (`int` hoặc `float`), `low`, `high`, tùy chọn `log`. Các giá trị trong `space` ghi đè tham số cùng tên ở `params` trong từng trial; những tham số khác giữ nguyên. Chỉ hỗ trợ các tham số XGBoost đã được tool cho phép. `--optuna` hiện chỉ dùng cùng `--evaluate` cho một model XGBoost, không dùng chung `--test`/`--bundle`/grid. Đây là tìm kiếm trên một tập validation cố định, chưa phải cross-validation; việc thử nhiều lần có thể làm kết quả chọn quá phù hợp với validation. Test vẫn chạy riêng sau khi chốt. Lịch sử từng trial được lưu vào JSON/CSV, nhưng study chưa hỗ trợ tiếp tục sau khi bị gián đoạn.
+
+### Grid Search
+
+```powershell
+pypi-metadata --evaluate .\outputs\run-01 --train-config .\configs\grid_optimize.json --experiment tuning-01
 ```
 
 Mẫu tuning chạy 27 cấu hình, có thử ngưỡng trên validation. Mỗi thí nghiệm phải có ID mới (chữ, số, dấu - hoặc _). Bỏ `--experiment` để tự tạo ID. Không ghi đè thí nghiệm cũ. Đổi tham số model không cần chạy lại Phase 1–3; đổi feature/reference/preprocessing cần chạy lại phase tương ứng và tạo thí nghiệm mới.
@@ -149,59 +172,52 @@ Scan không fit lại. Không nạp joblib từ sample hay nguồn không tin c�
 
 ## Các tùy chọn thường dùng
 
-| Tùy chọn | Công dụng |
-|---|---|
-| `-f PATH`, `--full PATH` | Chạy lần lượt bốn phase từ dataset hoặc sample. |
+| Tùy chọn                     | Công dụng                                                                         |
+| ------------------------------ | ----------------------------------------------------------------------------------- |
+| `-f PATH`, `--full PATH`   | Chạy lần lượt bốn phase từ dataset hoặc sample.                              |
 | `-o PATH`, `--output PATH` | Chỉ định thư mục kết quả. Với `--full`, thư mục phải mới hoặc rỗng. |
-| `-m CODE`, `--model CODE` | Chọn model khi tạo thí nghiệm train; nhiều mã phân tách bằng dấu phẩy. |
-| `-b PATH`, `--bundle PATH` | Dùng bundle local tin cậy đã train để dự đoán. |
-| `--experiment ID` | Đặt ID thí nghiệm mới hoặc chọn thí nghiệm khi test/xem dashboard. |
-| `--train-config PATH` | Chọn cấu hình model, tham số và grid cho thí nghiệm mới. |
-| `--manifest PATH` | Chỉ định manifest khi đọc đầu vào. |
-| `--config PATH` | Chọn cấu hình Phase 1/2. |
-| `--references PATH` | Chọn snapshot tham chiếu offline. |
-| `--test` | Đánh giá test riêng của thí nghiệm đã chốt, không train lại. |
-| `--visual [PATH]` | Tạo dashboard HTML; bỏ PATH để dùng run gần nhất. |
-| `--quiet` | Giảm thông tin tiến trình trên terminal. |
+| `-m CODE`, `--model CODE`  | Chọn model khi tạo thí nghiệm train; nhiều mã phân tách bằng dấu phẩy.   |
+| `-b PATH`, `--bundle PATH` | Dùng bundle local tin cậy đã train để dự đoán.                             |
+| `--experiment ID`            | Đặt ID thí nghiệm mới hoặc chọn thí nghiệm khi test/xem dashboard.         |
+| `--train-config PATH`        | Chọn cấu hình model, tham số và grid cho thí nghiệm mới.                    |
+| `--manifest PATH`            | Chỉ định manifest khi đọc đầu vào.                                          |
+| `--config PATH`              | Chọn cấu hình Phase 1/2.                                                         |
+| `--references PATH`          | Chọn snapshot tham chiếu offline.                                                 |
+| `--test`                     | Đánh giá test riêng của thí nghiệm đã chốt, không train lại.            |
+| `--visual [PATH]`            | Tạo dashboard HTML; bỏ PATH để dùng run gần nhất.                            |
+| `--quiet`                    | Giảm thông tin tiến trình trên terminal.                                       |
 
 `--help` liệt kê toàn bộ tùy chọn. Các subcommand tương thích cũ có hướng dẫn riêng, ví dụ `pypi-metadata scan --help`.
 
 ## Reference và kiểm thử
 
-Phase 2 mặc định dùng 28 target ví dụ. Muốn đồng bộ inventory PyPI, gọi riêng lệnh sau; không có sync ngầm:
+Để Phase 2 tìm tên tương tự trên toàn bộ inventory PyPI, đồng bộ một snapshot trước; không có sync ngầm:
 
 ```powershell
-pypi-metadata reference sync --output .\references
+python -m pypi_metadata_detector reference sync --output .\references
 ```
 
-`--references` chọn snapshot offline. `--config` là cấu hình Phase 1/2; `--train-config` chỉ cho Phase 4. Inventory PyPI không phải danh sách benign.
-
-### Thử nghiệm top 3.000 target và inventory PyPI
-
-Chuẩn bị reference **một lần**, dùng snapshot lượt tải JSON đã có trong Dataset và lấy inventory hiện tại từ PyPI chính thức. `--output` phải là thư mục chưa tồn tại; lệnh không ghi đè reference cũ:
+Chạy full pipeline với snapshot đó:
 
 ```powershell
-pypi-metadata reference top --input .\Dataset\provenance\sources\top-pypi-packages-30-days.min.json --provenance .\Dataset\provenance\sources\reference_provenance.json --output .\outputs\reference-top3000 --sync-index
+python -m pypi_metadata_detector -f .\Dataset -o .\outputs\inventory-run -m all --experiment baseline
+python -m pypi_metadata_detector --visual .\outputs\inventory-run --experiment baseline
 ```
 
-Snapshot đầu vào phải có `rows` gồm `project`, `download_count`, sắp xếp theo lượt tải giảm dần. Lệnh kiểm tra thứ tự toàn bộ snapshot, chọn 3.000 dòng đầu, chuẩn hóa tên và lưu hash, thời điểm có trong snapshot và số target vào `reference.json`. `--provenance` là tùy chọn; nếu dùng, file phải chứa SHA-256 khớp snapshot và có thể ghi URL, thời điểm lấy dữ liệu và kỳ thống kê khi nguồn cung cấp. Không suy kỳ thống kê từ tên file: kỳ không có bằng chứng được lưu `null`. Đây là snapshot tổng hợp sẵn, không phải lệnh tự query BigQuery. `--sync-index` chỉ truy cập PyPI để lấy inventory tên; bỏ tùy chọn này nếu muốn chuẩn bị offline, khi đó trạng thái inventory là unavailable. Có thể thay `--top 3000` bằng số từ 1 đến 5.000.
+Phase 2 tìm ứng viên offline theo sáu quy tắc, loại chính tên package và không ép chọn khi không có ứng viên. Snapshot và phiên bản thuật toán được lưu vào bundle để scan dùng cùng dữ liệu; thay snapshot cần chạy lại Phase 2 và train model mới. Các tên gần nhau không chứng minh target hay package độc hại. Kết quả nearest được xếp theo khoảng cách rồi thứ tự tên, chưa theo độ phổ biến. Combosquatting chưa được triển khai. `--references` chọn snapshot offline; nếu bỏ, tool dùng `references/reference.json` và báo lỗi nếu snapshot chưa được đồng bộ hoặc có thuật toán cũ. Sync cần thư mục chưa có `reference.json`, không ghi đè snapshot. `--config` là cấu hình Phase 1/2; `--train-config` chỉ cho Phase 4. Inventory PyPI không phải danh sách benign. `typo_distance` chỉ áp dụng cho reference/bundle cũ; chế độ mới chỉ cảnh báo khi khớp ít nhất một trong sáu quy tắc.
 
-Để bổ sung target theo tiêu chí và nguồn đã chốt, cung cấp `--targets .\targets-extra.txt`, mỗi dòng một tên (hoặc CSV cột `name`); tổng số tên duy nhất tối đa 5.000. Danh sách lượt tải và danh sách bổ sung chỉ phục vụ lựa chọn target, không tự gán nhãn benign/malicious. Lưu snapshot reference và nguồn target cùng kết quả thí nghiệm; không chọn target theo lỗi trên test.
+### Khảo sát tên tương tự trên toàn bộ inventory PyPI
 
-Chạy một run mới để so sánh với TC0:
+Có thể khảo sát riêng các ứng viên trước khi chạy pipeline. Dùng snapshot đã đồng bộ; ví dụ sau tạo snapshot mới từ PyPI, sau đó tìm tên offline:
 
 ```powershell
-pypi-metadata -f .\Dataset -o .\outputs\run-top3000 -m all --experiment baseline --references .\outputs\reference-top3000
-pypi-metadata --visual .\outputs\run-top3000 --experiment baseline
+python -m pypi_metadata_detector reference sync --output .\references\snapshots\pypi-index-moi
+python -m pypi_metadata_detector reference search --references .\references\snapshots\pypi-index-moi --name tensrflow --name ttensorflow-gpu --name requiremetns --name beautifulsoup-numpy --output .\outputs\ket-qua-tim-ten.json
 ```
 
-Đây là lần train mới; test vẫn chạy riêng sau khi chốt. Dùng `-m all` để thử sáu model như baseline `testcase0`, hoặc chọn model bằng `-m` nếu cần. Scan bằng bundle mới có thể dùng cùng reference để đối chiếu inventory:
+Chọn thư mục snapshot mới để giữ kết quả cũ. `--name` có thể lặp; `--output` là file JSON mới, không ghi đè file đã có. `--limit` giới hạn số ứng viên hiển thị cho mỗi tên (mặc định 20, tối đa 1.000); `candidate_count` là tổng trước khi cắt.
 
-```powershell
-pypi-metadata -f .\sample.whl -b .\outputs\run-top3000\experiments\baseline\bundle.joblib --references .\outputs\reference-top3000
-```
-
-Nếu bỏ `--references` khi scan, tool vẫn dùng target đã lưu trong bundle nhưng inventory có thể unavailable. Reference phải có target khớp bundle. Top 3.000 không đảm bảo bao phủ mọi target và không thêm quy tắc combosquatting. Quy tắc hiện tại trả về `exact_target` và không xét tiếp các target khác khi tên sample trùng một target; đây không phải xác minh package an toàn. Nếu target snapshot mới hơn mẫu lịch sử, ghi rõ điều đó khi diễn giải đánh giá. Tăng từ 28 lên 3.000 target có thể làm Phase 2 mất thời gian hơn; lệnh vẫn chạy offline sau bước chuẩn bị reference.
+Các quy tắc kiểm tra ký tự lặp, thiếu ký tự, đảo ký tự kề nhau, đảo từ, thay thế giống bàn phím/hình dạng và hậu tố số; loại tên đầu vào sau chuẩn hóa. Chưa dùng độ phổ biến và chưa hỗ trợ combosquatting hay nhiều biến đổi đồng thời. Không có ứng viên không chứng minh an toàn; ứng viên không chứng minh target thật hay package độc hại. JSON lưu hash, nguồn, ngày và serial của snapshot để đối chiếu. Model trước đây không dùng các feature mới và cần được train lại để đánh giá thay đổi này.
 
 ```powershell
 python -m pip install -e ".[ml,test]"
@@ -211,4 +227,3 @@ python -B -m pytest -p no:cacheprovider -q
 Synthetic fixture chỉ xác minh chức năng, không là metric phát hiện thực. Xem [hướng dẫn thành viên 2](docs/MEMBER2_TRAINING.md), [định dạng cấu hình](docs/TRAINING_CONFIG.md) và [source layout](docs/SOURCE_LAYOUT.md).
 
 Subcommand reference/extract/analyze/train/evaluate/scan cũ vẫn có để tương thích. `train` cũ chỉ RF/DT và có thể fit lại preprocessing; dùng giao diện flag ở trên cho thí nghiệm 1.2.1.
-

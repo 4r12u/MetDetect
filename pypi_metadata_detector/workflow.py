@@ -36,12 +36,13 @@ def flag_parser():
     parser.add_argument("--references", help="Snapshot PyPI offline; mặc định dùng references/reference.json nếu có")
     parser.add_argument("--config", help="Cấu hình cho Phase 1/2")
     parser.add_argument("--train-config", help="JSON model/tham số/grid riêng cho Phase 4; không đổi Phase 1–3")
+    parser.add_argument("--optuna", metavar="PATH", help="Tối ưu XGBoost với cấu hình Optuna JSON trong Phase 4")
     parser.add_argument("-m", "--model", "--models", metavar="CODE[,CODE...]",
                         help="Model Phase 4: dt, rf, lr, svm, cnb, xgb; ví dụ --model dt,lr hoặc --model all")
     parser.add_argument("--experiment", metavar="ID", help="ID thí nghiệm mới hoặc chọn thí nghiệm cho --metric/--visual/--test")
     parser.add_argument("--test", action="store_true", help="Chỉ đánh giá test của --experiment đã chốt; không train/tune")
     parser.add_argument("--quiet", action="store_true")
-    parser.epilog = "Lệnh reference sync/init và các subcommand 1.0.1 vẫn được hỗ trợ."
+    parser.epilog = "Lệnh reference sync và các subcommand 1.0.1 vẫn được hỗ trợ."
     return parser
 
 
@@ -148,6 +149,8 @@ def execute_full(args):
     """Run the existing phase workflow in order, stopping on an unsuccessful phase."""
     if args.test:
         raise ToolError("--full không chạy test; dùng --evaluate RUN --experiment ID --test sau khi chốt model.")
+    if args.optuna:
+        raise ToolError("Optuna dùng với --evaluate RUN sau khi hoàn thành Phase 3.")
     if args.bundle and (args.model or args.train_config or args.experiment):
         raise ToolError("--full --bundle không dùng --model, --train-config hoặc --experiment.")
     if args.metric not in (None, "") or args.visual not in (None, ""):
@@ -191,6 +194,8 @@ def execute(args):
         raise ToolError("--model chỉ dùng với --evaluate để huấn luyện; --test/--bundle dùng model đã chốt.")
     if args.train_config and (phase != "evaluate" or args.test or args.bundle):
         raise ToolError("--train-config chỉ dùng với --evaluate để tạo thí nghiệm mới.")
+    if args.optuna and (phase != "evaluate" or args.test or args.bundle):
+        raise ToolError("--optuna chỉ dùng với --evaluate để tạo thí nghiệm train XGBoost mới.")
     if args.test and (phase != "evaluate" or not args.experiment or args.bundle):
         raise ToolError("Test cần --evaluate PATH --experiment ID --test; không dùng --bundle.")
     if args.experiment and (phase not in (None, "evaluate") or args.bundle):
@@ -269,9 +274,11 @@ def execute(args):
             else:
                 default_path = PROJECT_ROOT / "references" / "reference.json"
                 reference_path = args.references or (default_path if default_path.is_file() else None)
-                reference = load_reference(reference_path)
                 if reference_path is None:
-                    progress.say("Reference: tập tên ví dụ; chưa sync inventory PyPI. Có thể dùng reference sync một lần.")
+                    raise ToolError("Cần snapshot PyPI: chạy reference sync --output references hoặc cung cấp --references PATH")
+                reference = load_reference(reference_path)
+                if reference.get("name_matching_algorithm") != "spellbound-signals-2":
+                    raise ToolError("Cần snapshot PyPI mới: chạy reference sync; reference cũ chỉ dùng cùng bundle đã train")
             result = analyze_run(run, config, reference, progress)
             result_code = int(result["failed"] > 0 or result["ok"] == 0)
         else:
@@ -296,7 +303,9 @@ def execute(args):
                     if args.test:
                         test_experiment(run, progress, args.experiment)
                     else:
-                        experiment = train_experiment(run, progress, args.train_config, args.experiment, args.model)
+                        experiment = train_experiment(run, progress, args.train_config, args.experiment, args.model,
+                                                      optuna_path=args.optuna,
+                                                      loaded_prepared=(report, records, excluded, analysis, prepared))
                         args.experiment = experiment["experiment_id"]
                 else:
                     if args.train_config or args.test or args.experiment:

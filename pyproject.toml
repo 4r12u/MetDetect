@@ -12,6 +12,7 @@ dependencies = ["scikit-learn>=1.5,<2", "numpy>=1.24", "scipy>=1.10", "joblib>=1
 [project.optional-dependencies]
 test = ["pytest>=8,<9"]
 ml = ["xgboost>=2.1,<4"]
+optuna = ["optuna>=4,<5", "xgboost>=2.1,<4"]
 
 [project.scripts]
 pypi-metadata = "pypi_metadata_detector.cli:main"

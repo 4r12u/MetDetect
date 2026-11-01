@@ -6,7 +6,7 @@ import sys
 from . import __version__
 from .common import Progress, ToolError, discover, load_config, read_json, write_csv, write_json
 from .phase1_metadata_extraction.extract import extract_run
-from .phase2_metadata_analysis.reference import create_top_reference, default_reference, load_reference, read_targets, sync_reference
+from .phase2_metadata_analysis.reference import load_reference, sync_reference
 from .phase2_metadata_analysis.signals import analyze_run
 
 def parser():
@@ -15,21 +15,18 @@ def parser():
     commands = root.add_subparsers(dest="command", required=True)
     ref = commands.add_parser("reference", help="Create or explicitly synchronize an offline PyPI reference")
     actions = ref.add_subparsers(dest="action", required=True)
-    for action in ("init", "sync"):
+    for action in ("sync",):
         sub = actions.add_parser(action)
         sub.add_argument("--output", default="references")
-        sub.add_argument("--targets", help="CSV with name column, or one target per line")
         sub.add_argument("--quiet", action="store_true")
         if action == "sync":
             sub.add_argument("--run", help="Also retrieve exact-version metadata for this extraction run")
-    top = actions.add_parser("top", help="Build a frozen reference from a ranked local download snapshot")
-    top.add_argument("--input", required=True, help="Local JSON snapshot with ranked project/download_count rows")
-    top.add_argument("--output", required=True, help="New directory for reference.json")
-    top.add_argument("--top", type=int, default=3000, help="Number of ranked names, 1–5000 (default 3000)")
-    top.add_argument("--targets", help="Optional supplemental CSV with name column or one name per line")
-    top.add_argument("--provenance", help="Optional source metadata JSON with sha256 matching the snapshot")
-    top.add_argument("--sync-index", action="store_true", help="Explicitly fetch the official PyPI name inventory")
-    top.add_argument("--quiet", action="store_true")
+    search = actions.add_parser("search", help="Find similar names in a frozen PyPI inventory")
+    search.add_argument("--references", required=True, help="Reference directory or reference.json containing a PyPI inventory")
+    search.add_argument("--name", action="append", required=True, help="Package name; repeat for multiple names")
+    search.add_argument("--limit", type=int, default=20, help="Maximum candidates per name, 1–1000")
+    search.add_argument("--output", help="Optional new JSON report path")
+    search.add_argument("--quiet", action="store_true")
     extract = commands.add_parser("extract", help="Phase 1: read PKG-INFO/METADATA without executing samples")
     source = extract.add_mutually_exclusive_group(required=True)
     source.add_argument("--input")
@@ -77,15 +74,18 @@ def main(argv=None):
     progress = Progress(args.quiet)
     try:
         if args.command == "reference":
-            if args.action == "top":
-                create_top_reference(args.input, args.output, args.top, args.targets, args.sync_index, progress,
-                                     provenance_path=args.provenance)
-            elif args.action == "init":
-                reference = default_reference(read_targets(args.targets) if args.targets else None)
-                write_json(Path(args.output) / "reference.json", reference)
-                progress.say(f"Reference offline | Targets: {len(reference['targets'])} | Registry inventory: chưa có")
+            if args.action == "search":
+                from .phase2_metadata_analysis.inventory_search import inventory_search_report, save_report
+                report = inventory_search_report(load_reference(args.references), args.name, args.limit)
+                if args.output:
+                    save_report(args.output, report)
+                for row in report["results"]:
+                    progress.say(f"{row['name']} | Candidates: {row['candidate_count']} | " +
+                                 ", ".join(item["target"] for item in row["candidates"]))
+                if args.output:
+                    progress.say("Report: " + args.output)
             else:
-                sync_reference(args.output, args.targets, args.run, progress)
+                sync_reference(args.output, run=args.run, progress=progress)
             return 0
         if args.command == "extract":
             config = load_config(args.config)
@@ -99,9 +99,12 @@ def main(argv=None):
         if args.command == "analyze":
             extraction = read_json(Path(args.run) / "extraction.json")
             config = load_config(args.config) if args.config else extraction["config"]
-            reference = load_reference(args.references)
-            if not args.references:
-                progress.say("Reference: tên ví dụ có sẵn; registry lookup chưa khả dụng. Dùng reference sync để lấy PyPI.")
+            ref_path = args.references or (Path("references") / "reference.json")
+            if not Path(ref_path).exists():
+                raise ToolError("Cần snapshot PyPI: chạy reference sync --output references hoặc cung cấp --references PATH")
+            reference = load_reference(ref_path)
+            if reference.get("name_matching_algorithm") != "spellbound-signals-2":
+                raise ToolError("Cần snapshot PyPI mới: chạy reference sync")
             result = analyze_run(args.run, config, reference, progress)
             return int(result["failed"] > 0 or result["ok"] == 0)
         from .phase4_ml_classification.model import bundle_reference, evaluate_run, load_bundle, predict_run, train_run

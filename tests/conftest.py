@@ -1,10 +1,20 @@
 import csv
 from pathlib import Path
 import pytest
-from pypi_metadata_detector.common import DEFAULTS, Progress, discover
+from pypi_metadata_detector.common import DEFAULTS, Progress, discover, digest, write_json
 from pypi_metadata_detector.phase1_metadata_extraction.extract import extract_run
 from pypi_metadata_detector.phase2_metadata_analysis.reference import default_reference
 from pypi_metadata_detector.phase2_metadata_analysis.signals import analyze_run
+
+@pytest.fixture
+def inventory_reference(tmp_path):
+    ref = default_reference([])
+    ref.update(name_matching_mode="inventory", name_matching_algorithm="spellbound-signals-2",
+               index_available=True, names=["tensorflow", "requests", "example"], source="fixture")
+    ref["sha256"] = digest({k: v for k, v in ref.items() if k != "sha256"})
+    path = tmp_path / "references" / "reference.json"
+    write_json(path, ref)
+    return path
 
 def metadata_bytes(name="example", version="0.1", extra="", description="Sample description"):
     return (f"Metadata-Version: 2.1\nName: {name}\nVersion: {version}\nSummary: Useful library\n" +

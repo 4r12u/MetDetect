@@ -56,7 +56,7 @@ Phase 2–4 đọc artifact trong output trước, không cần đọc archive g
 ## 5. Tuning, test và báo cáo
 
 ```powershell
-python -m pypi_metadata_detector --evaluate .\outputs\run-01 --model dt,rf,lr --train-config .\configs\training-tuning.json --experiment tuning-01 --metric --visual
+python -m pypi_metadata_detector --evaluate .\outputs\run-01 --model dt,rf,lr --train-config .\configs\grid_optimize.json --experiment tuning-01 --metric --visual
 ```
 
 Ví dụ này chỉ chạy grid của dt/rf/lr, giữ các params/grid trong file. Dùng --model all để chạy cả sáu. Đổi ID cho mỗi lần chạy mới; không ghi đè thí nghiệm cũ.

@@ -6,7 +6,18 @@ __pycache__/
 build/
 dist/
 outputs/
+references/reference.json
+references/snapshots/
 visual/
 Dataset/samples/
 mini_200_mixed/
 Dataset/
+
+# Local environment secrets (keep the example configuration)
+.env
+.env.*
+!.env.example
+
+# Generated research reports and release checksums
+/docs/research/
+/SOURCE_CHECKSUMS.json

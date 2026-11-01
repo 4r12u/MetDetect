@@ -4,6 +4,8 @@ CLI: `--evaluate .\outputs\run-01 --model dt,lr --train-config FILE`. --model (h
 
 `--train-config FILE` chỉ dùng khi tạo thí nghiệm bằng `--evaluate`. Không sửa analysis config hay cache Phase 3. Các key không được hỗ trợ bị từ chối; không import class hoặc thực thi biểu thức từ JSON.
 
+Optuna TPE là lựa chọn độc lập: `--evaluate RUN --train-config configs/best.json --optuna configs/optuna-xgb.json --experiment ID`. Cài bằng `python -m pip install -e ".[optuna]"`. `--train-config` chỉ định tham số XGBoost cố định; file Optuna chỉ định `n_trials` (1–100), `sampler_seed` và khoảng tìm kiếm. Các tham số được tìm ghi đè tham số gốc trong từng trial. Nếu đủ các giá trị mốc trong phạm vi, trial đầu là mốc. Không dùng grid, model khác, `--test` hoặc `--bundle` cùng `--optuna`. Tool dùng validation cố định, không phải cross-validation; test chạy riêng. Thư mục experiment chứa `optuna_config.json`, `trials.json`, `training_config.json` và bundle, nhưng chưa hỗ trợ resume study bị gián đoạn.
+
 | Key | Ý nghĩa |
 |---|---|
 | seed | Seed model (0 đến 2^32-1); seed chia dữ liệu thuộc Phase 3 và không đổi ở đây |

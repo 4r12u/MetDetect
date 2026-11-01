@@ -99,16 +99,31 @@ def environment():
             "tool_version": __version__, "packages": packages}
 
 
-def train_experiment(run, progress, config_path=None, experiment_id=None, model_selection=None):
+def train_experiment(run, progress, config_path=None, experiment_id=None, model_selection=None,
+                     optuna_path=None, loaded_prepared=None):
     run = Path(run).resolve()
-    config = load_training_config(config_path, model_selection)
-    prep, records, excluded, analysis, prepared = load_prepared(run)
+    if optuna_path and config_path:
+        supplied = read_json(config_path, 131_072)
+        if isinstance(supplied, dict) and "models" in supplied and (
+                not isinstance(supplied["models"], dict) or "xgb" not in supplied["models"]):
+            raise ToolError("optuna_train_config_must_include_xgb")
+    config = load_training_config(config_path, model_selection or ("xgb" if optuna_path else None))
+    study, optimization, warm_started = None, None, False
+    if optuna_path:
+        if list(config["models"]) != ["xgb"] or config["models"]["xgb"].get("grid"):
+            raise ToolError("optuna_requires_xgb_without_grid")
+        from .optuna_search import load_optuna_config, make_study
+        optimization = load_optuna_config(optuna_path)
+        study, warm_started = make_study(optimization, config["models"]["xgb"].get("params", {}))
+    prep, records, excluded, analysis, prepared = loaded_prepared if loaded_prepared is not None else load_prepared(run)
     if prep["mode"] != "training":
         raise ToolError("experiments_require_training_preprocessing")
     experiment_id = experiment_id or (datetime.now(timezone.utc).strftime("exp-%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:8])
     folder = experiment_path(run, experiment_id)
     folder.mkdir(parents=True, exist_ok=False)
     write_json(folder / "training_config.json", config)
+    if optimization:
+        write_json(folder / "optuna_config.json", {**optimization, "baseline_enqueued": warm_started})
     write_json(folder / "status.json", {"status": "running", "experiment_id": experiment_id})
     splits, parts, encoder, matrices = prepared
     train_y = [LABELS[r["label"]] for r in parts["train"]]
@@ -117,12 +132,23 @@ def train_experiment(run, progress, config_path=None, experiment_id=None, model_
     trials, best, models, thresholds, report_models = [], {}, {}, {}, {}
     total = sum(np.prod([len(v) for v in spec.get("grid", {}).values()], dtype=int)
                 for spec in config["models"].values())
+    if study:
+        total = optimization["n_trials"]
     # Test matrices may be integrity-checked/loaded, but are never passed to a model during tuning.
     for name, spec in config["models"].items():
         grid = spec.get("grid", {})
-        for combination in product(*grid.values()):
-            params = {**spec.get("params", {}), **dict(zip(grid, combination))}
+        combinations = range(total) if study else product(*grid.values())
+        for combination in combinations:
+            if study:
+                from .optuna_search import suggest
+                optuna_trial = study.ask()
+                params = {**spec.get("params", {}), **suggest(optuna_trial, optimization)}
+            else:
+                optuna_trial = None
+                params = {**spec.get("params", {}), **dict(zip(grid, combination))}
             trial = {"trial": len(trials)+1, "model": name, "params": params, "status": "failed"}
+            if optuna_trial is not None:
+                trial["optuna_number"] = optuna_trial.number
             start = time.perf_counter()
             progress.say(f"Phase 4 | Trial: {trial['trial']}/{total} | Model: {name.upper()} | TRAINING | Params: {params}")
             try:
@@ -161,6 +187,12 @@ def train_experiment(run, progress, config_path=None, experiment_id=None, model_
             except (ValueError, TypeError, RuntimeError, ImportError) as exc:
                 trial.update(error=type(exc).__name__ + ": " + str(exc), seconds=time.perf_counter()-start)
                 progress.say(f"Phase 4 | Trial: {trial['trial']} | {name.upper()} | FAILED | {trial['error']}")
+            if optuna_trial is not None:
+                if trial["status"] == "success" and trial.get("converged"):
+                    study.tell(optuna_trial, trial["metrics"][selected_metric])
+                else:
+                    from optuna.trial import TrialState
+                    study.tell(optuna_trial, state=TrialState.FAIL)
             trials.append(trial)
             write_json(folder / "trials.json", trials)
     write_csv(folder / "trials.csv", [{"trial": t["trial"], "model": t["model"], "status": t["status"],
@@ -178,6 +210,7 @@ def train_experiment(run, progress, config_path=None, experiment_id=None, model_
               "training_id": training_id, "config": analysis["config"], "training_config": config,
               "encoder": encoder, "models": models, "thresholds": thresholds, "selected_model": selected,
               "targets": analysis["targets"], "target_fingerprint": analysis["target_fingerprint"],
+              "name_reference": analysis.get("name_reference"),
               "reference_sha256": analysis["reference_sha256"], "identities": identities,
               "created_at": datetime.now(timezone.utc).isoformat(), "classes": LABELS,
               "sklearn_version": version("scikit-learn"), "environment": environment()}
@@ -208,6 +241,11 @@ def train_experiment(run, progress, config_path=None, experiment_id=None, model_
                "trial_count": len(trials), "failed_trials": sum(t["status"] == "failed" for t in trials),
                "not_converged_trials": sum(t.get("converged") is False for t in trials),
                "test_evaluated": False}
+    if optimization:
+        summary["optimization"] = {"method": "optuna-tpe", "optuna_version": version("optuna"),
+                                   "sampler_seed": optimization["sampler_seed"],
+                                   "space": optimization["space"], "baseline_enqueued": warm_started,
+                                   "objective_split": "validation", "cross_validation": False}
     write_json(folder / "experiment.json", summary)
     write_json(folder / "status.json", {"status": "complete", "experiment_id": experiment_id})
     write_json(folder.parent / "latest.json", {"experiment_id": experiment_id})

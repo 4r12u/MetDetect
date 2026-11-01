@@ -9,9 +9,9 @@
 
 ## Quy trình
 
-1. Chạy `--evaluate .\outputs\run-01 --model all --train-config .\configs\training-default.json --experiment baseline --metric --visual` để lấy baseline sáu model.
+1. Chạy `--evaluate .\outputs\run-01 --model all --train-config .\configs\baseline.json --experiment baseline --metric --visual` để lấy baseline sáu model.
 2. Đọc `trials.json`: kiểm tra model nào thất bại, thiếu thư viện hoặc không hội tụ. Lần chạy có một model lỗi vẫn giữ các model còn lại; không ghi model lỗi vào bảng như điểm 0.
-3. Sao chép training-tuning.json thành cấu hình riêng, chọn grid nhỏ và chạy với ID mới. Tuning mẫu gồm 27 cấu hình. Không đổi split, nhãn hay vocabulary theo kết quả model.
+3. Sao chép grid_optimize.json thành cấu hình riêng, chọn grid nhỏ và chạy với ID mới. Tuning mẫu gồm 27 cấu hình. Không đổi split, nhãn hay vocabulary theo kết quả model.
 4. So sánh validation, mặc định chọn F1 malicious. Xem Recall, FP/FN và thời gian. Ghi lại lựa chọn, tham số và ngưỡng trước khi xem test.
 5. Chạy `--evaluate .\outputs\run-01 --experiment ID-DA-CHON --test --metric --visual`. Thay ID-DA-CHON bằng ID thật. Không train lại và không chọn model theo điểm test.
 6. Nộp bảng kết quả validation/test, Top Feature, phân tích FP/FN, cấu hình và bundle đã chọn. Không diễn giải feature importance thành quan hệ nhân quả.

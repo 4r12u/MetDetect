@@ -2,7 +2,6 @@
 from datetime import datetime, timezone
 from pathlib import Path
 import csv
-import hashlib
 import json
 from urllib.error import HTTPError
 from urllib.parse import quote
@@ -28,6 +27,9 @@ def default_reference(targets=None):
     return value
 
 def target_fingerprint(reference):
+    if reference.get("name_matching_mode") == "inventory":
+        version = reference.get("name_matching_algorithm", "inventory-single-edit-1")
+        return digest({"signal_version": version, "names": sorted(reference["names"])})
     return digest({"signal_version": "name-signals-1", "targets": sorted(reference["targets"])})
 
 def read_targets(path):
@@ -60,78 +62,12 @@ def load_reference(path=None):
     if not isinstance(value.get("names"), list) or not isinstance(value.get("releases"), dict):
         raise ToolError("invalid_reference_contents")
     targets = value.get("targets", [])
-    if not targets or len(targets) > 5000 or any(not valid_name(n) or normalize_name(n) != n for n in targets):
+    if (not isinstance(targets, list) or (not targets and value.get("name_matching_mode") != "inventory") or
+            len(targets) > 5000 or any(not valid_name(n) or normalize_name(n) != n for n in targets)):
         raise ToolError("invalid_reference_targets")
     return value
 
 
-def create_top_reference(snapshot_path, output, top=3000, extra_targets=None, sync_index=False, progress=None,
-                         provenance_path=None):
-    """Build a new frozen target snapshot; optionally fetch the official inventory."""
-    if type(top) is not int or not 1 <= top <= 5000:
-        raise ToolError("top_must_be_between_1_and_5000")
-    source = Path(snapshot_path)
-    if source.stat().st_size > 16_777_216:
-        raise ToolError("top_snapshot_size_limit")
-    raw = source.read_bytes()
-    snapshot = json.loads(raw.decode("utf-8-sig"))
-    rows = snapshot.get("rows") if isinstance(snapshot, dict) else None
-    if not isinstance(rows, list) or len(rows) < top:
-        raise ToolError("top_snapshot_has_too_few_rows")
-    selected, last_count = [], None
-    for position, row in enumerate(rows):
-        if not isinstance(row, dict) or not valid_name(row.get("project")):
-            raise ToolError("invalid_top_snapshot_project")
-        count = row.get("download_count")
-        if type(count) is not int or count < 0 or (last_count is not None and count > last_count):
-            raise ToolError("top_snapshot_requires_descending_download_counts")
-        if position < top:
-            selected.append(normalize_name(row["project"]))
-        last_count = count
-    if len(set(selected)) != top:
-        raise ToolError("duplicate_top_snapshot_project")
-    extras = read_targets(extra_targets) if extra_targets else []
-    targets = sorted(set(selected) | set(extras))
-    if len(targets) > 5000:
-        raise ToolError("targets_require_1_to_5000_valid_names")
-    destination = Path(output).resolve()
-    if destination.exists():
-        raise ToolError("reference_output_must_be_new")
-    snapshot_hash = hashlib.sha256(raw).hexdigest()
-    provenance = read_json(provenance_path, 65_536) if provenance_path else {}
-    if not isinstance(provenance, dict) or (provenance_path and provenance.get("sha256") != snapshot_hash):
-        raise ToolError("top_snapshot_provenance_checksum_mismatch")
-    reference = default_reference(targets)
-    reference.update(source="offline_no_pypi_inventory", created_at=datetime.now(timezone.utc).isoformat())
-    reference["target_provenance"] = {
-        "selection": "first_rows_in_descending_download_count", "top_count": top,
-        "snapshot_filename": source.name, "snapshot_sha256": snapshot_hash,
-        "snapshot_last_update": snapshot.get("last_update"), "snapshot_source": snapshot.get("source"),
-        "snapshot_url": provenance.get("url"), "snapshot_retrieved_at": provenance.get("retrieved_at"),
-        "download_period": provenance.get("download_period"),
-        "provenance_sha256": hashlib.sha256(Path(provenance_path).read_bytes()).hexdigest() if provenance_path else None,
-        "supplemental_count": len(set(extras) - set(selected)),
-        "supplemental_sha256": hashlib.sha256(Path(extra_targets).read_bytes()).hexdigest() if extra_targets else None,
-        "note": "Popularity is a target-selection source, not a benign label or classifier feature.",
-    }
-    if sync_index:
-        if progress:
-            progress.say("Reference | Đang lấy inventory từ PyPI official...")
-        result, serial = get_json("https://pypi.org/simple/", "application/vnd.pypi.simple.v1+json")
-        if not isinstance(result, dict) or not isinstance(result.get("projects"), list):
-            raise ToolError("invalid_pypi_index")
-        names = sorted({normalize_name(p["name"]) for p in result["projects"]
-                        if isinstance(p, dict) and valid_name(p.get("name"))})
-        if not names:
-            raise ToolError("empty_pypi_index")
-        reference.update(source="https://pypi.org/simple/", created_at=datetime.now(timezone.utc).isoformat(),
-                         serial=serial, names=names, index_available=True)
-    reference["sha256"] = digest({k: v for k, v in reference.items() if k != "sha256"})
-    destination.mkdir(parents=True, exist_ok=False)
-    write_json(destination / "reference.json", reference)
-    if progress:
-        progress.say(f"Reference | Targets: {len(targets)} | Inventory: {len(reference['names'])} | {destination}")
-    return reference
 
 def get_json(url, accept="application/json", limit=268_435_456):
     # URL construction belongs to this module. Never follow a URL found in a sample.
@@ -146,6 +82,10 @@ def get_json(url, accept="application/json", limit=268_435_456):
         return json.loads(raw), response.headers.get("X-PyPI-Last-Serial")
 
 def sync_reference(output, targets=None, run=None, progress=None):
+    if targets:
+        raise ToolError("sync_inventory_does_not_use_static_targets")
+    if (Path(output) / "reference.json").exists():
+        raise ToolError("reference_output_must_be_new")
     if progress:
         progress.say("Reference | Đang lấy danh sách tên từ PyPI official...")
     result, serial = get_json("https://pypi.org/simple/", "application/vnd.pypi.simple.v1+json")
@@ -155,9 +95,10 @@ def sync_reference(output, targets=None, run=None, progress=None):
                     if isinstance(p, dict) and valid_name(p.get("name"))})
     if not names:
         raise ToolError("empty_pypi_index")
-    reference = default_reference(read_targets(targets) if targets else None)
+    reference = default_reference([])
     reference.update(source="https://pypi.org/simple/", created_at=datetime.now(timezone.utc).isoformat(),
-                     serial=serial, names=names, index_available=True, releases={})
+                     serial=serial, names=names, index_available=True, releases={},
+                     name_matching_mode="inventory", name_matching_algorithm="spellbound-signals-2")
     samples = read_json(Path(run) / "extraction.json")["samples"] if run else []
     wanted = {}
     for sample in samples:
@@ -186,5 +127,5 @@ def sync_reference(output, targets=None, run=None, progress=None):
     reference["sha256"] = digest({k: v for k, v in reference.items() if k != "sha256"})
     write_json(Path(output) / "reference.json", reference)
     if progress:
-        progress.say(f"Reference hoàn thành | Names: {len(names)} | Targets: {len(reference['targets'])} | Releases: {len(wanted)}")
+        progress.say(f"Reference hoàn thành | PyPI inventory: {len(names)} | Releases: {len(wanted)}")
     return reference

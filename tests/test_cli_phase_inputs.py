@@ -9,7 +9,7 @@ from pypi_metadata_detector.phase4_ml_classification.estimators import load_trai
 from pypi_metadata_detector import workflow
 
 
-def test_output_chain_folder_and_previous_phase_files(training_run, tmp_path, monkeypatch):
+def test_output_chain_folder_and_previous_phase_files(training_run, tmp_path, monkeypatch, inventory_reference):
     run, _, _ = training_run
     monkeypatch.setattr(workflow, "PROJECT_ROOT", tmp_path)
     assert main(["--analysis", str(run / "extraction.json"), "--quiet"]) == 0
@@ -74,11 +74,11 @@ def test_unknown_model_does_not_create_experiment(training_run):
     assert not (run / "experiments" / "bad").exists()
 
 
-def test_folder_chain_does_not_need_original_dataset(training_run, monkeypatch):
+def test_folder_chain_does_not_need_original_dataset(training_run, monkeypatch, inventory_reference):
     run, _, _ = training_run
     def no_discovery(*args, **kwargs):
         raise AssertionError("later phases must not rediscover raw samples")
     monkeypatch.setattr(workflow, "collect_samples", no_discovery)
-    assert main(["--analysis", str(run), "--quiet"]) == 0
+    assert main(["--analysis", str(run), "--references", str(inventory_reference), "--quiet"]) == 0
     assert main(["--preprocessing", str(run), "--quiet"]) == 0
     assert main(["--evaluate", str(run), "--model", "dt", "--experiment", "folder", "--quiet"]) == 0

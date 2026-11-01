@@ -37,7 +37,7 @@ const number=new Intl.NumberFormat('vi-VN'), value=x=>x===null||x===undefined?'�
 const modelNames={rf:'Random Forest',dt:'Decision Tree',lr:'Logistic Regression',svm:'Linear SVM',cnb:'Complement Naive Bayes',xgb:'XGBoost'};
 const modelKeys=[...new Set(Object.values(report.metrics).flatMap(r=>Object.keys(r.models)))];
 for(const key of modelKeys)$('model').append(new Option(modelNames[key]||key,key));
-if(report.experiment){$('model').value=report.experiment.selected_model;$('experiment-info').textContent='Experiment: '+report.experiment.experiment_id+' · Chọn bằng '+report.experiment.selection_metric+' · Test '+(report.experiment.test_evaluated?'đã chạy':'chưa chạy');}
+if(report.experiment){$('model').value=report.experiment.selected_model;const opt=report.experiment.optimization;$('experiment-info').textContent='Experiment: '+report.experiment.experiment_id+' · Chọn bằng '+report.experiment.selection_metric+' · Test '+(report.experiment.test_evaluated?'đã chạy':'chưa chạy')+(opt?' · '+opt.method+' · seed: '+opt.sampler_seed+' · mốc đầu: '+(opt.baseline_enqueued?'có':'không')+' · validation cố định':'');}
 $('source').textContent=report.source||report.run;$('generated').textContent='Tạo lúc '+report.generated_at+' · Báo cáo offline';$('note').textContent=report.note;
 const phaseNames=['Metadata extraction','Metadata analysis','Preprocessing','ML classification'], states={complete:'Đã chạy',not_run:'Chưa chạy',stale:'Cần chạy lại'};
 for(let i=1;i<=4;i++){const n=node('div'),status=report.phases[String(i)];n.append(node('small','Phase '+i),node('b',phaseNames[i-1]),node('span',states[status],status));$('phases').append(n)}

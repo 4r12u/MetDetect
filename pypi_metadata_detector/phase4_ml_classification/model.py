@@ -61,6 +61,7 @@ def train_run(run, manifest, progress, prepared=None):
     bundle = {"schema_version": "metadata-model-1", "feature_version": FEATURE_VERSION,
               "training_id": training_id, "config": config, "encoder": encoder, "models": models,
               "selected_model": selected, "targets": analysis["targets"],
+              "name_reference": analysis.get("name_reference"),
               "target_fingerprint": analysis["target_fingerprint"], "reference_sha256": analysis["reference_sha256"],
               "identities": identities, "created_at": datetime.now(timezone.utc).isoformat(),
               "classes": LABELS, "sklearn_version": version("scikit-learn")}
@@ -184,4 +185,4 @@ def predict_run(run, bundle, progress, prepared_matrix=None):
     return summary
 
 def bundle_reference(bundle):
-    return default_reference(bundle["targets"])
+    return bundle.get("name_reference") or default_reference(bundle["targets"])

@@ -15,7 +15,7 @@ from conftest import metadata_bytes
 
 
 @pytest.fixture
-def flags_dataset(training_run, tmp_path, monkeypatch):
+def flags_dataset(training_run, tmp_path, monkeypatch, inventory_reference):
     from pypi_metadata_detector.phase4_ml_classification import estimators
     defaults = estimators.default_training_config()
     defaults["models"] = {"dt": {}, "rf": {"params": {"n_estimators": 5}}}
@@ -72,7 +72,7 @@ def test_four_flags_train_once_and_generate_metrics_html(flags_dataset, tmp_path
     assert build_report(run)["metrics"]["test"]["models"]["rf"]["samples"] == 6
 
 
-def test_phase_prerequisites_and_unlabelled_sample(tmp_path, monkeypatch, capsys):
+def test_phase_prerequisites_and_unlabelled_sample(tmp_path, monkeypatch, capsys, inventory_reference):
     monkeypatch.setattr(workflow, "PROJECT_ROOT", tmp_path)
     sample = tmp_path / "PKG-INFO"
     sample.write_bytes(metadata_bytes())
@@ -244,29 +244,41 @@ def test_short_full_creates_separate_runs_without_automatic_dashboard(flags_data
     assert not (tmp_path / "visual").exists()
 
 
-def test_full_with_top_reference_preserves_targets_for_scan(flags_dataset, tmp_path, monkeypatch):
+def test_new_training_rejects_legacy_static_reference(flags_dataset, tmp_path):
+    from pypi_metadata_detector.phase2_metadata_analysis.reference import default_reference
     source, _ = flags_dataset
-    snapshot = tmp_path / "top.json"
-    write_json(snapshot, {"last_update": "2026-10-01", "rows": [
-        {"project": "tensorflow", "download_count": 100},
-        {"project": "requests", "download_count": 90}]})
-    reference = tmp_path / "refs"
-    assert main(["reference", "top", "--input", str(snapshot), "--top", "2",
-                 "--output", str(reference), "--quiet"]) == 0
-    run = tmp_path / "top-train"
+    reference = tmp_path / "legacy.json"
+    write_json(reference, default_reference(["tensorflow", "requests"]))
+    run = tmp_path / "custom-train"
     assert main(["-f", str(source), "-o", str(run), "-m", "dt", "--experiment", "baseline",
-                 "--references", str(reference), "--quiet"]) == 0
-    assert set(read_json(run / "analysis.json")["targets"]) == {"tensorflow", "requests"}
+                 "--references", str(reference), "--quiet"]) == 2
+
+
+def test_inventory_reference_is_used_and_frozen_for_full_and_scan(flags_dataset, tmp_path, monkeypatch):
+    from pypi_metadata_detector.common import digest
+    from pypi_metadata_detector.phase2_metadata_analysis.reference import default_reference
+    source, _ = flags_dataset
+    reference = default_reference()
+    reference.update(name_matching_mode="inventory", name_matching_algorithm="spellbound-signals-2", index_available=True,
+                     names=["tensorflow", "tensorflow-gpu", "tensrflow"], source="fixture")
+    reference["sha256"] = digest({k: v for k, v in reference.items() if k != "sha256"})
+    refpath = tmp_path / "inventory" / "reference.json"
+    write_json(refpath, reference)
+    run = tmp_path / "inventory-train"
+    assert main(["-f", str(source), "-o", str(run), "-m", "dt", "--experiment", "baseline",
+                 "--references", str(refpath), "--quiet"]) == 0
     bundle = run / "experiments" / "baseline" / "bundle.joblib"
     sample = tmp_path / "scan-input" / "PKG-INFO"
     sample.parent.mkdir()
     sample.write_bytes(metadata_bytes("tensrflow"))
-    def no_fit(*args, **kwargs):
-        raise AssertionError("Scan must not refit")
-    monkeypatch.setattr(FeatureEncoder, "fit", no_fit)
-    scan = tmp_path / "top-scan"
-    assert main(["-f", str(sample), "-o", str(scan), "-b", str(bundle),
-                 "--references", str(reference), "--quiet"]) == 0
+    monkeypatch.setattr(FeatureEncoder, "fit", lambda *a, **kw: pytest.fail("scan refit"))
+    scan = tmp_path / "inventory-scan"
+    assert main(["-f", str(sample), "-o", str(scan), "-b", str(bundle), "--quiet"]) == 0
     rows = list(csv.DictReader((scan / "predictions.csv").open(encoding="utf-8-sig", newline="")))
     assert rows[0]["nearest_target"] == "tensorflow"
     assert rows[0]["typosquatting_candidate"] == "True"
+    reference["names"] = ["tensrflow", "pillow"]
+    reference["sha256"] = digest({k: v for k, v in reference.items() if k != "sha256"})
+    write_json(refpath, reference)
+    assert main(["-f", str(sample), "-o", str(tmp_path / "mismatch"), "-b", str(bundle),
+                 "--references", str(refpath), "--quiet"]) == 2

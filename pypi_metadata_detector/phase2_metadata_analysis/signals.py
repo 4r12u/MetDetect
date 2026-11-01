@@ -119,7 +119,7 @@ def compare_registry(metadata, reference, names):
                     result[dest] = "match" if left.strip().casefold() == right.strip().casefold() else "mismatch"
     return result
 
-def analyze_record(record, config, reference, names=None):
+def analyze_record(record, config, reference, names=None, fingerprint=None):
     if record.get("status") != "ok":
         raise ToolError("metadata_not_eligible")
     metadata = record["metadata"]
@@ -130,7 +130,24 @@ def analyze_record(record, config, reference, names=None):
             features[key.lower().replace("-", "_") + "_" + category] = int(state == category)
     features["has_license"] = int(any(states[k] == "present" for k in ("License", "License-Expression")))
     features["has_project_url"] = int(any(states[k] == "present" for k in ("Home-page", "Project-URL")))
-    typo = name_signals(metadata["Name"], tuple(reference["targets"]), config["typo_distance"])
+    if reference.get("name_matching_mode") == "inventory":
+        from .inventory_search import search_inventory, search_inventory_legacy
+        new_rules = reference.get("name_matching_algorithm") == "spellbound-signals-2"
+        if not new_rules and config["typo_distance"] > 1:
+            raise ToolError("inventory_search_supports_distance_at_most_one")
+        search = search_inventory if new_rules else search_inventory_legacy
+        found = search(metadata["Name"], names if names is not None else set(reference["names"]), 1000)
+        candidates = found["candidates"] if new_rules else [item for item in found["candidates"] if item["signals"] or
+                      0 < item["edit_distance"] <= config["typo_distance"]]
+        flags = found["flags"] if new_rules else {key: any(key in item["signals"] for item in candidates) for key in SIGNAL_KEYS}
+        best = candidates[0] if candidates else None
+        typo = {"nearest_target": best["target"] if best else None,
+                "edit_distance": best["edit_distance"] if best else None, "exact_target": False,
+                "suspected_typosquatting": bool(candidates),
+                "matches": [{"target": item["target"], "signals": item["signals"]} for item in candidates[:20]],
+                "candidate_count": found["candidate_count"], "candidates_truncated": found["truncated"], **flags}
+    else:
+        typo = name_signals(metadata["Name"], tuple(reference["targets"]), config["typo_distance"])
     features["name_distance"] = typo["edit_distance"] if typo["edit_distance"] is not None else -1
     features["name_exact_target"] = int(typo["exact_target"])
     for key in SIGNAL_KEYS:
@@ -161,7 +178,7 @@ def analyze_record(record, config, reference, names=None):
             "lexical": lexical, "features": features, "text": text,
             "text_truncated": len(raw_text) > len(text), "text_original_chars": len(raw_text),
             "config_digest": digest(config), "reference_sha256": reference["sha256"],
-            "target_fingerprint": target_fingerprint(reference)}
+            "target_fingerprint": fingerprint if fingerprint is not None else target_fingerprint(reference)}
 
 def analyze_run(run, config, reference, progress):
     run = Path(run)
@@ -169,8 +186,16 @@ def analyze_run(run, config, reference, progress):
     if extraction["config"] != config:
         raise ToolError("config_differs_from_extraction; rerun extract with this config")
     names = set(reference["names"])
+    fingerprint = target_fingerprint(reference)
+    if reference.get("name_matching_mode") == "inventory" and (not reference.get("index_available") or not names):
+        raise ToolError("pypi_inventory_unavailable_sync_reference_first")
+    if (reference.get("name_matching_mode") == "inventory" and
+            reference.get("name_matching_algorithm") != "spellbound-signals-2" and config["typo_distance"] > 1):
+        raise ToolError("inventory_search_supports_distance_at_most_one")
     rows, index = [], []
-    progress.say(f"Chạy Phase 2 | Samples: {extraction['total']} | Targets: {len(reference['targets'])} | Offline")
+    progress.say(f"Chạy Phase 2 | Samples: {extraction['total']} | " +
+                 (f"PyPI inventory: {len(names)}" if reference.get("name_matching_mode") == "inventory"
+                  else f"Targets: {len(reference['targets'])}") + " | Offline")
     counts = {"ok": 0, "partial": 0, "skipped": 0, "failed": 0}
     for position, sample in enumerate(extraction["samples"], 1):
         started = time.monotonic()
@@ -185,7 +210,7 @@ def analyze_run(run, config, reference, progress):
         try:
             if record.get("metadata_digest") != digest(record["metadata"]) or record["metadata_digest"] != sample["metadata_digest"]:
                 raise ToolError("metadata_changed_since_extraction")
-            signals = analyze_record(record, config, reference, names)
+            signals = analyze_record(record, config, reference, names, fingerprint)
             write_json(folder / "signals.json", signals)
             write_json(folder / "status.json", {"phase": 2, "status": "ok"})
             index.append({"sample_id": sample["sample_id"], "status": "ok", "signals_digest": digest(signals)})
@@ -201,7 +226,8 @@ def analyze_run(run, config, reference, progress):
             progress.item(position, extraction["total"], sample["sample_id"], 2, "FAILED", time.monotonic()-started, error)
     report = {"schema_version": "analysis-1", "extract_id": extraction["extract_id"],
               "config": config, "reference_sha256": reference["sha256"],
-              "target_fingerprint": target_fingerprint(reference), "targets": reference["targets"],
+              "target_fingerprint": fingerprint, "targets": reference["targets"],
+              "name_reference": reference if reference.get("name_matching_mode") == "inventory" else None,
               "samples": index, "total": extraction["total"], **counts}
     write_json(run / "analysis.json", report)
     write_json(run / "run_summary.json", {"phase": 2, "total": extraction["total"], **counts})
